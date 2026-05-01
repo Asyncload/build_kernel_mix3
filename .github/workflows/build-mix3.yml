@@ -5,16 +5,11 @@ on:
 
 jobs:
   build:
-    # 切换到资源充足的 Ubuntu 22.04
     runs-on: ubuntu-22.04
 
     steps:
-    - name: 优化磁盘空间
-      uses: jlumbroso/free-disk-space@main
-      with:
-        tool-cache: true
-
-    - name: 安装构建包 (针对 22.04 优化)
+    # 去掉了“优化磁盘空间”步骤，直接开始安装依赖
+    - name: 安装构建包
       run: |
         sudo apt-get update
         sudo apt-get install -y \
@@ -23,20 +18,20 @@ jobs:
           lib32readline-dev lib32z1-dev libdw-dev libelf-dev libgnutls28-dev \
           lz4 libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush \
           rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
-          python3 python-is-python3 libtinfo5 libncurses5 # 显式安装旧版库
+          python3 python-is-python3 libtinfo5 libncurses5
 
     - name: 克隆内核源码
       run: |
         git clone https://github.com/LineageOS/android_kernel_xiaomi_sdm845.git -b lineage-21 --depth=1 kernel-source
 
-    - name: 下载官方工具链
+    - name: 下载工具链 (使用 LineageOS 官方源)
       run: |
-         mkdir -p clang
-         # 使用更稳定的直接链接下载 Clang r487747c
-         curl -Lo clang.tar.gz https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/0009c21829a28189895c1a7e2b1006a86c8f49d2.tar.gz
-         tar -C clang -xf clang.tar.gz
-         git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git --depth=1 gcc64
-         git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git --depth=1 gcc32
+        # 下载官方配套的 Clang
+        git clone https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r487747c.git --depth=1 clang
+        # 下载官方 AArch64 GCC
+        git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git --depth=1 gcc64
+        # 下载官方 Arm32 GCC
+        git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git --depth=1 gcc32
 
     - name: 配置版本号
       run: |
@@ -48,6 +43,7 @@ jobs:
     - name: 执行编译
       run: |
         cd kernel-source
+        # 注意：使用 git clone 下来的 clang 路径里多了一层
         export PATH=$GITHUB_WORKSPACE/clang/bin:$GITHUB_WORKSPACE/gcc64/bin:$GITHUB_WORKSPACE/gcc32/bin:$PATH
         export ARCH=arm64
         export CLANG_TRIPLE=aarch64-linux-gnu-
