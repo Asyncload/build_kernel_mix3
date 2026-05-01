@@ -31,11 +31,12 @@ jobs:
 
     - name: 下载官方工具链
       run: |
-        mkdir -p clang
-        wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r487747c.tar.gz
-        tar -C clang -xf clang-r487747c.tar.gz
-        git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git --depth=1 gcc64
-        git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git --depth=1 gcc32
+         mkdir -p clang
+         # 使用更稳定的直接链接下载 Clang r487747c
+         curl -Lo clang.tar.gz https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/0009c21829a28189895c1a7e2b1006a86c8f49d2.tar.gz
+         tar -C clang -xf clang.tar.gz
+         git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git --depth=1 gcc64
+         git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git --depth=1 gcc32
 
     - name: 配置版本号
       run: |
