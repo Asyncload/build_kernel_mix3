@@ -1,11 +1,12 @@
-name: build_kernel_Mix3
+name: LineageOS 21 Kernel Build for Mix3
 
 on:
-  workflow_dispatch: # 手动触发编译
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04 # 严格遵循官方 Wiki 推荐的 Ubuntu 20.04 基准环境
+    # 切换到资源充足的 Ubuntu 22.04
+    runs-on: ubuntu-22.04
 
     steps:
     - name: 优化磁盘空间
@@ -13,7 +14,7 @@ jobs:
       with:
         tool-cache: true
 
-    - name: 安装官方文档要求的全量构建包
+    - name: 安装构建包 (针对 22.04 优化)
       run: |
         sudo apt-get update
         sudo apt-get install -y \
@@ -22,55 +23,40 @@ jobs:
           lib32readline-dev lib32z1-dev libdw-dev libelf-dev libgnutls28-dev \
           lz4 libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush \
           rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
-          lib32ncurses5-dev libncurses5 libncurses5-dev python3 python-is-python3
+          python3 python-is-python3 libtinfo5 libncurses5 # 显式安装旧版库
 
-    - name: 克隆 LineageOS 21 内核源码
+    - name: 克隆内核源码
       run: |
-        # 对应小米骁龙 845 官方内核仓库
         git clone https://github.com/LineageOS/android_kernel_xiaomi_sdm845.git -b lineage-21 --depth=1 kernel-source
 
-    - name: 下载官方预编译工具链 (Clang & GCC)
+    - name: 下载官方工具链
       run: |
-        # 1. 下载安卓官方推荐的 Clang (r487747c)
         mkdir -p clang
         wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r487747c.tar.gz
         tar -C clang -xf clang-r487747c.tar.gz
-        
-        # 2. 下载官方 AArch64 GCC 4.9 (用于汇编辅助)
         git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git --depth=1 gcc64
-        
-        # 3. 下载官方 Arm32 GCC 4.9 (用于兼容性)
         git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git --depth=1 gcc32
 
-    - name: 配置固定内核版本号
+    - name: 配置版本号
       run: |
         cd kernel-source
-        # 设置你想要的内核后缀名，例如 Dola-Mix3
         fixed_version="LineageOS-21-Dola"
         sed -i "s/^EXTRAVERSION =.*/EXTRAVERSION = -${fixed_version}/" Makefile
-        # 将后缀注入到 Mix3 特有的配置片段中
         echo "CONFIG_LOCALVERSION=\"-${fixed_version}\"" >> arch/arm64/configs/vendor/xiaomi/perseus.config
 
-    - name: 执行官方标准编译
+    - name: 执行编译
       run: |
         cd kernel-source
-        # 将所有下载的工具链路径加入系统环境
         export PATH=$GITHUB_WORKSPACE/clang/bin:$GITHUB_WORKSPACE/gcc64/bin:$GITHUB_WORKSPACE/gcc32/bin:$PATH
-        
         export ARCH=arm64
         export CLANG_TRIPLE=aarch64-linux-gnu-
         export CROSS_COMPILE=aarch64-linux-android-
         export CROSS_COMPILE_ARM32=arm-linux-androideabi-
         
         mkdir -p out
-        
-        # 1. 生成基础配置 (mi845_defconfig 是小米 845 平台的底包)
         make O=out mi845_defconfig
-        
-        # 2. 合并 Mix3 特定的配置碎片 (perseus.config)
         ARCH=arm64 scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
         
-        # 3. 开始执行编译
         make -j$(nproc --all) O=out \
                       CC=clang \
                       CLANG_TRIPLE=aarch64-linux-gnu- \
@@ -83,24 +69,23 @@ jobs:
                       OBJDUMP=llvm-objdump \
                       STRIP=llvm-strip
 
-    - name: 自动打包 AnyKernel3 (直刷包)
+    - name: 打包 AnyKernel3
       run: |
         git clone https://github.com/osm0sis/AnyKernel3.git
-        # 将编译出来的镜像放入打包文件夹
         if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
             cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
-        else
+        elif [ -f kernel-source/out/arch/arm64/boot/Image.gz ]; then
             cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/
+        else
+            cp kernel-source/out/arch/arm64/boot/Image AnyKernel3/
         fi
-        
         cd AnyKernel3
-        # 适配 Mix3 设备代号
         sed -i 's/device.name1=maguro/device.name1=perseus/' anykernel.sh
         sed -i 's/device.name2=toro/device.name2=mix3/' anykernel.sh
-        zip -r ../Mix3-Kernel-Flashable.zip *
+        zip -r ../Mix3-Kernel-L21.zip *
 
-    - name: 上传最终刷机包 (Artifacts)
+    - name: 上传
       uses: actions/upload-artifact@v4
       with:
-        name: Mix3-L21-Kernel-Zip
-        path: Mix3-Kernel-Flashable.zip
+        name: Mix3-L21-Kernel
+        path: Mix3-Kernel-L21.zip
