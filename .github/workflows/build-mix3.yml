@@ -23,14 +23,12 @@ jobs:
       run: |
         git clone https://github.com/LineageOS/android_kernel_xiaomi_sdm845.git -b lineage-21 --depth=1 kernel-source
 
-    - name: 下载官方工具链 (稳定版镜像)
+    - name: 下载工具链 (全 Git 克隆方案，最稳)
       run: |
-        # 1. 下载 Clang (换用更稳定的第三方 GitHub 镜像源，防止 Google 400 错误)
-        mkdir -p clang
-        curl -Ls https://github.com/Zyinix/Clang/releases/download/r487747c/clang-r487747c.tar.gz -o clang.tar.gz
-        tar -xf clang.tar.gz -C clang
+        # 直接克隆 LineageOS 官方维护的 Clang 仓库
+        git clone https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r487747c.git --depth=1 clang
         
-        # 2. 下载 GCC 4.9 (使用 LineageOS 官方 GitHub 仓库，这个比 Google 源稳)
+        # 克隆 GCC 4.9 仓库
         git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git --depth=1 gcc64
         git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git --depth=1 gcc32
 
@@ -44,7 +42,7 @@ jobs:
     - name: 执行编译
       run: |
         cd kernel-source
-        # 修正环境变量路径
+        # 环境变量指向 Git 克隆下来的 bin 目录
         export PATH=$GITHUB_WORKSPACE/clang/bin:$GITHUB_WORKSPACE/gcc64/bin:$GITHUB_WORKSPACE/gcc32/bin:$PATH
         export ARCH=arm64
         export CLANG_TRIPLE=aarch64-linux-gnu-
@@ -70,7 +68,6 @@ jobs:
     - name: 打包 AnyKernel3
       run: |
         git clone https://github.com/osm0sis/AnyKernel3.git
-        # 将编译出来的镜像放入打包文件夹
         if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
             cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
         else
