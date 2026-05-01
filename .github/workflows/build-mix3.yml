@@ -8,7 +8,6 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-    # 去掉了“优化磁盘空间”步骤，直接开始安装依赖
     - name: 安装构建包
       run: |
         sudo apt-get update
@@ -24,14 +23,18 @@ jobs:
       run: |
         git clone https://github.com/LineageOS/android_kernel_xiaomi_sdm845.git -b lineage-21 --depth=1 kernel-source
 
-    - name: 下载工具链 (使用 LineageOS 官方源)
+    - name: 下载官方工具链 (修正下载源)
       run: |
-        # 下载官方配套的 Clang
-        git clone https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r487747c.git --depth=1 clang
-        # 下载官方 AArch64 GCC
-        git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git --depth=1 gcc64
-        # 下载官方 Arm32 GCC
-        git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git --depth=1 gcc32
+        # 下载 Clang r487747c (直接从 Google 的二进制库拉取)
+        mkdir -p clang
+        cd clang
+        curl -L https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r487747c.tar.gz -o clang.tar.gz
+        tar -xf clang.tar.gz
+        cd ..
+
+        # 下载 GCC (换用更稳定的下载方式)
+        git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 -b p-release --depth=1 gcc64
+        git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 -b p-release --depth=1 gcc32
 
     - name: 配置版本号
       run: |
@@ -43,7 +46,7 @@ jobs:
     - name: 执行编译
       run: |
         cd kernel-source
-        # 注意：使用 git clone 下来的 clang 路径里多了一层
+        # 修正环境变量路径
         export PATH=$GITHUB_WORKSPACE/clang/bin:$GITHUB_WORKSPACE/gcc64/bin:$GITHUB_WORKSPACE/gcc32/bin:$PATH
         export ARCH=arm64
         export CLANG_TRIPLE=aarch64-linux-gnu-
@@ -71,18 +74,16 @@ jobs:
         git clone https://github.com/osm0sis/AnyKernel3.git
         if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
             cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
-        elif [ -f kernel-source/out/arch/arm64/boot/Image.gz ]; then
-            cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/
         else
-            cp kernel-source/out/arch/arm64/boot/Image AnyKernel3/
+            cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/
         fi
         cd AnyKernel3
         sed -i 's/device.name1=maguro/device.name1=perseus/' anykernel.sh
         sed -i 's/device.name2=toro/device.name2=mix3/' anykernel.sh
-        zip -r ../Mix3-Kernel-L21.zip *
+        zip -r ../Mix3-Kernel-Flashable.zip *
 
     - name: 上传
       uses: actions/upload-artifact@v4
       with:
         name: Mix3-L21-Kernel
-        path: Mix3-Kernel-L21.zip
+        path: Mix3-Kernel-Flashable.zip
