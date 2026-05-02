@@ -15,15 +15,14 @@ jobs:
       - name: 1. 环境初始化与依赖安装
         run: |
           sudo apt-get update
-          # 安装 libtinfo5 以支持旧版 Clang
+          # 安装旧版 Clang 运行环境
           wget -q http://mirrors.kernel.org/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2_amd64.deb
           sudo apt install ./libtinfo5_6.3-2_amd64.deb -y
-          # 安装构建内核的基础工具
+          # 安装基础构建依赖
           sudo apt-get install -y bc bison build-essential flex libssl-dev libelf-dev python3 git zip rsync libncurses5
 
       - name: 2. 克隆内核源码
         run: |
-          # 克隆 LineageOS 21 的 sdm845 源码
           git clone https://github.com/LineageOS/android_kernel_xiaomi_sdm845.git -b lineage-21 --depth=1 kernel-source
 
       - name: 3. 部署工具链 (Proton-Clang + Lineage-GCC)
@@ -35,18 +34,17 @@ jobs:
           wget -q https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz
           tar -xf master.tar.gz -C $(pwd)/toolchain/clang --strip-components=1
           
-          # 下载 GCC 4.9 (LineageOS 源)
+          # 下载 GCC 4.9 (用于链接和辅助编译)
           git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git --depth=1 $(pwd)/toolchain/gcc64
           git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git --depth=1 $(pwd)/toolchain/gcc32
           
-          # 设定环境变量路径
+          # 写入环境变量
           echo "CLANG_PATH=$(pwd)/toolchain/clang/bin" >> $GITHUB_ENV
           echo "GCC64_PATH=$(pwd)/toolchain/gcc64/bin" >> $GITHUB_ENV
           echo "GCC32_PATH=$(pwd)/toolchain/gcc32/bin" >> $GITHUB_ENV
 
-      - name: 4. 执行核心编译 (消除重复定义冲突版)
+      - name: 4. 执行核心编译 (物理隔离避冲版)
         run: |
-          # 注入工具链
           export PATH=$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH
           
           export ARCH=arm64
@@ -58,17 +56,19 @@ jobs:
           
           cd kernel-source
           
-          # 【核心修复】：解决 Techpack 重复定义
-          # 1. 干净地挂载 Techpack 到 staging 目录
-          mkdir -p drivers/staging
+          # 【核心修复】：物理移动驱动文件夹，消除重复定义报错
           if [ -d "techpack/audio" ]; then
-             rm -rf drivers/staging/techpack_audio
-             ln -s $(pwd)/techpack/audio drivers/staging/techpack_audio
+             echo "📦 执行目录物理迁移..."
+             mkdir -p drivers/staging
+             # 1. 直接 mv 而不是 ln -s，确保原路径彻底消失
+             mv techpack/audio drivers/staging/techpack_audio
              
-             # 在 staging 的 Makefile 中注入一次
+             # 2. 注入 Staging 编译系统
              sed -i '/techpack_audio/d' drivers/staging/Makefile
              echo 'obj-y += techpack_audio/' >> drivers/staging/Makefile
-             echo "✅ 已干净地将 Techpack 挂载至驱动树"
+             
+             # 3. 屏蔽可能存在的原生 Makefile 包含逻辑
+             sed -i 's/obj-y += techpack\/audio\///g' Makefile 2>/dev/null || true
           fi
 
           mkdir -p out
@@ -76,17 +76,18 @@ jobs:
           # A. 生成基础配置
           make O=out ARCH=arm64 CC=clang sdm845_defconfig
           
-          # B. 合并 Mix 3 (perseus) 专用配置
+          # B. 合并 Mix 3 专用配置
           if [ -f arch/arm64/configs/vendor/xiaomi/perseus.config ]; then
             scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           fi
 
-          # C. 【关键】：彻底关闭原生开关，只保留我们 staging 里的手动挂载
+          # C. 环境清理与宏注入
           sed -i 's/CONFIG_EFI=y/CONFIG_EFI=n/g' out/.config
           cat <<EOF >> out/.config
           CONFIG_SND_SOC_SDM845=y
           CONFIG_SND_SOC_PERSEUS=y
           CONFIG_SND_SOC_ELLIPTIC=y
+          # 禁用原生开关，防止其去旧路径找东西
           CONFIG_AUDIO_TECHPACK=n
           CONFIG_TECHPACK_AUDIO=n
           EOF
@@ -94,7 +95,7 @@ jobs:
           # D. 刷新配置
           make O=out ARCH=arm64 CC=clang olddefconfig
 
-          # E. 全量编译 (不再传递 TECHPACK_AUDIO=y 防止冲突)
+          # E. 全量编译 (使用 GCC 链接器以避开链接错误)
           make -j$(nproc --all) O=out \
                         ARCH=arm64 \
                         CC=clang \
@@ -113,25 +114,25 @@ jobs:
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
           
-          # 寻找编译产物
+          # 检查并拷贝编译产物
           if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
             cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
           elif [ -f kernel-source/out/arch/arm64/boot/Image.gz ]; then
             cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/
           else
-            echo "❌ 编译产物缺失，请检查编译日志中的 Error 信息！"
+            echo "❌ 编译产物缺失，请检查编译日志中的链接报错！"
             exit 1
           fi
           
           cd AnyKernel3
-          # 修改 AnyKernel3 脚本适配 perseus
+          # 修改 AnyKernel3 脚本适配 perseus (小米 Mix 3)
           sed -i 's/device.name1=maguro/device.name1=perseus/' anykernel.sh
           sed -i 's/device.name2=toroplus/device.name2=mix3/' anykernel.sh
           
-          zip -r ../Mix3-Kernel-Final-Result.zip *
+          zip -r ../Mix3-Kernel-Final-Fixed.zip *
 
       - name: 6. 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: Mix3-Kernel-Package
-          path: Mix3-Kernel-Final-Result.zip
+          name: Mix3-Kernel-Result
+          path: Mix3-Kernel-Final-Fixed.zip
