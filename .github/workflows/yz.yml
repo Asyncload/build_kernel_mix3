@@ -1,4 +1,4 @@
-name: GCC-4.9-专项修复验证
+name: GCC-4.9-路径修复验证
 
 on:
   workflow_dispatch:
@@ -8,35 +8,36 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: 1. 下载 GCC (Google 官方 AOSP 源)
+      - name: 1. 下载 GCC (换成 LineageOS 的预编译源)
         run: |
-          # 负责 64 位内核主体
-          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 --depth=1 $(pwd)/gcc64
-          # 负责 32 位兼容层 (VDSO等)
-          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 --depth=1 $(pwd)/gcc32
-
-      - name: 2. 深度扫描路径 (解决找不到文件的问题)
-        run: |
-          echo "--- 扫描 GCC64 bin 目录 ---"
-          ls -F $(pwd)/gcc64/bin/ | grep "gcc"
+          # 下载 64位 GCC
+          git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git --depth=1 $(pwd)/gcc64
           
-          echo "--- 扫描 GCC32 bin 目录 ---"
-          ls -F $(pwd)/gcc32/bin/ | grep "gcc"
+          # 下载 32位 GCC
+          git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git --depth=1 $(pwd)/gcc32
 
-      - name: 3. 运行权限修复与执行测试
+      - name: 2. 扫描并验证路径
         run: |
-          # 确保有执行权限
-          chmod +x $(pwd)/gcc64/bin/*
-          chmod +x $(pwd)/gcc32/bin/*
+          echo "--- 检查 64位 GCC 目录结构 ---"
+          find $(pwd)/gcc64 -name "aarch64-linux-android-gcc"
           
-          echo "--- 测试 GCC 64 版本 ---"
-          $(pwd)/gcc64/bin/aarch64-linux-android-gcc --version
-          
-          echo "--- 测试 GCC 32 版本 ---"
-          $(pwd)/gcc32/bin/arm-linux-androideabi-gcc --version
+          echo "--- 检查 32位 GCC 目录结构 ---"
+          find $(pwd)/gcc32 -name "arm-linux-androideabi-gcc"
 
-      - name: 4. 依赖库检查 (关键步骤)
+      - name: 3. 最终尝试运行
         run: |
-          # 有时 GCC 4.9 需要 32 位运行库，或者特定的 libmpfr
-          echo "--- 检查 GCC 依赖 ---"
-          ldd $(pwd)/gcc64/bin/aarch64-linux-android-gcc || echo "无法使用 ldd 检查"
+          # 自动寻找 bin 目录并运行
+          GCC64_EXE=$(find $(pwd)/gcc64 -name "aarch64-linux-android-gcc")
+          GCC32_EXE=$(find $(pwd)/gcc32 -name "arm-linux-androideabi-gcc")
+          
+          if [ -f "$GCC64_EXE" ]; then
+            echo "✅ 找到 64位 GCC: $GCC64_EXE"
+            $GCC64_EXE --version | head -n 1
+          else
+            echo "❌ 依然找不到 64位 GCC"
+          fi
+          
+          if [ -f "$GCC32_EXE" ]; then
+            echo "✅ 找到 32位 GCC: $GCC32_EXE"
+            $GCC32_EXE --version | head -n 1
+          fi
