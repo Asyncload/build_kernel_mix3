@@ -8,16 +8,20 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-    - name: 安装构建包
+        - name: 安装构建包
       run: |
-        sudo apt-get update
-        sudo apt-get install -y \
+        # 换成更快的镜像源（比如阿里云或腾讯云，GitHub 访问这些也很快）
+        sudo sed -i 's/archive.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list
+        sudo apt-get update -qq
+        # 加上 --no-install-recommends 只装核心，不装杂七杂八的推荐包
+        sudo apt-get install -y --no-install-recommends \
           bc bison build-essential ccache curl flex g++-multilib gcc-multilib \
           git git-lfs gnupg gperf imagemagick protobuf-compiler python3-protobuf \
           lib32readline-dev lib32z1-dev libdw-dev libelf-dev libgnutls28-dev \
           lz4 libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush \
           rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
           python3 python-is-python3 libtinfo5 libncurses5
+
 
     - name: 克隆内核源码
       run: |
