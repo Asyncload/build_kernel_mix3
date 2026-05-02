@@ -2,11 +2,11 @@ name: build_Mix3_kernel
 
 on:
   push:
-    branches: [ "main" ] # 确保这里是您的脚本所在分支名
+   # branches: [ "main" ] # 确保这里是您的脚本所在分支名
     paths-ignore:
       - 'README.md'
   pull_request:
-    branches: [ "main" ]
+   # branches: [ "main" ]
   workflow_dispatch: # 保留手动触发按钮
 
 jobs:
