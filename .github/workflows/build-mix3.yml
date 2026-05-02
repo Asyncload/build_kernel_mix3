@@ -2,8 +2,8 @@ name: build_Mix3_kernel
 
 on:
   push:
-    branches: [ "main" ] # 当 main 分支有代码提交时自动触发
-  workflow_dispatch: # 保留手动触发按钮
+    branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -18,7 +18,7 @@ jobs:
             git git-lfs gnupg gperf imagemagick protobuf-compiler python3-protobuf \
             lib32readline-dev lib32z1-dev libdw-dev libelf-dev libgnutls28-dev \
             lz4 libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush \
-            rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
+            rsync pool rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
             python3 python-is-python3 libtinfo5 libncurses5
 
       - name: 克隆内核源码
@@ -27,39 +27,37 @@ jobs:
 
       - name: 下载工具链 (AOSP 官方全量 Git 克隆)
         run: |
-          # 克隆 AOSP 预编译的 Clang (r487747c)
-          git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 --depth=1 -b main clang-src
-          mkdir -p clang
-          # 提取具体的编译器版本
-          mv clang-src/clang-r487747c/* clang/
+          # 直接克隆官方 Clang 仓库
+          git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 --depth=1 -b main clang
           
           # 克隆 GCC 4.9
           git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 --depth=1 -b p-release gcc64
           git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 --depth=1 -b p-release gcc32
 
-      - name: 配置版本号
+      - name: 执行编译 (智能路径版)
         run: |
           cd kernel-source
-          fixed_version="LineageOS-21-Dola"
-          sed -i "s/^EXTRAVERSION =.*/EXTRAVERSION = -${fixed_version}/" Makefile
-          echo "CONFIG_LOCALVERSION=\"-${fixed_version}\"" >> arch/arm64/configs/vendor/xiaomi/perseus.config
-
-      - name: 执行编译 (自动执行主逻辑)
-        run: |
-          cd kernel-source
-          export PATH=$GITHUB_WORKSPACE/clang/bin:$GITHUB_WORKSPACE/gcc64/bin:$GITHUB_WORKSPACE/gcc32/bin:$PATH
+          
+          # 动态寻找 clang 可执行文件所在的目录，确保路径 100% 正确
+          CLANG_BIN=$(find $GITHUB_WORKSPACE/clang -name "clang" -type f | xargs dirname | head -n 1)
+          echo "Found Clang at: $CLANG_BIN"
+          
+          export PATH=$CLANG_BIN:$GITHUB_WORKSPACE/gcc64/bin:$GITHUB_WORKSPACE/gcc32/bin:$PATH
           export ARCH=arm64
           export CLANG_TRIPLE=aarch64-linux-gnu-
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           
+          # 准备输出目录
           mkdir -p out
+          
           # 1. 生成基础配置
           make O=out mi845_defconfig
+          
           # 2. 合并 Mix3 (perseus) 专用配置
           ARCH=arm64 scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           
-          # 3. 开始全自动化编译
+          # 3. 开始全量编译
           make -j$(nproc --all) O=out \
                         CC=clang \
                         CLANG_TRIPLE=aarch64-linux-gnu- \
@@ -75,18 +73,23 @@ jobs:
       - name: 打包 AnyKernel3 (生成直刷包)
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
+          # 智能识别生成的镜像文件（可能是 Image.gz-dtb 或 Image.gz）
           if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
               cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
-          else
+          elif [ -f kernel-source/out/arch/arm64/boot/Image.gz ]; then
               cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/
+          else
+              cp kernel-source/out/arch/arm64/boot/Image AnyKernel3/
           fi
+          
           cd AnyKernel3
+          # 设置刷机包识别的机型
           sed -i 's/device.name1=maguro/device.name1=perseus/' anykernel.sh
           sed -i 's/device.name2=toro/device.name2=mix3/' anykernel.sh
-          zip -r ../Mix3-Kernel-Flashable.zip *
+          zip -r ../Mix3-L21-Kernel-Flashable.zip *
 
       - name: 上传编译结果
         uses: actions/upload-artifact@v4
         with:
-          name: Mix3-L21-Kernel
-          path: Mix3-Kernel-Flashable.zip
+          name: Mix3-L21-Kernel-Artifact
+          path: Mix3-L21-Kernel-Flashable.zip
