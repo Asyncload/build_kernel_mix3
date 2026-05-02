@@ -1,7 +1,9 @@
 name: build_Mix3_kernel
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [ "main" ] # 当 main 分支有代码提交时自动触发
+  workflow_dispatch: # 保留手动触发按钮
 
 jobs:
   build:
@@ -10,10 +12,7 @@ jobs:
     steps:
       - name: 安装构建包
         run: |
-          # 换成更快的镜像源（比如阿里云，GitHub 访问这些也很快）
-          sudo sed -i 's/archive.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list
           sudo apt-get update -qq
-          # 加上 --no-install-recommends 只装核心，不装杂七杂八的推荐包
           sudo apt-get install -y --no-install-recommends \
             bc bison build-essential ccache curl flex g++-multilib gcc-multilib \
             git git-lfs gnupg gperf imagemagick protobuf-compiler python3-protobuf \
@@ -26,18 +25,17 @@ jobs:
         run: |
           git clone https://github.com/LineageOS/android_kernel_xiaomi_sdm845.git -b lineage-21 --depth=1 kernel-source
 
-      - name: 下载工具链 (使用第三方稳定镜像源)
+      - name: 下载工具链 (AOSP 官方全量 Git 克隆)
         run: |
-          # 使用专门为内核编译提供的 Clang 镜像源 (Eva Clang)
+          # 克隆 AOSP 预编译的 Clang (r487747c)
+          git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 --depth=1 -b main clang-src
           mkdir -p clang
-          curl -Ls https://github.com/mvaisakh/gcc-arm64/releases/download/v15.0.0/clang-r487747c.tar.gz -o clang.tar.gz
-          # 如果下载失败则退出，防止产生假文件
-          [ -s clang.tar.gz ] || exit 1
-          tar -xf clang.tar.gz -C clang
+          # 提取具体的编译器版本
+          mv clang-src/clang-r487747c/* clang/
           
-          # 使用完全公开的 GCC 4.9 镜像
-          git clone https://github.com/mvaisakh/gcc-arm64.git --depth=1 gcc64
-          git clone https://github.com/mvaisakh/gcc-arm.git --depth=1 gcc32
+          # 克隆 GCC 4.9
+          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 --depth=1 -b p-release gcc64
+          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 --depth=1 -b p-release gcc32
 
       - name: 配置版本号
         run: |
@@ -46,10 +44,9 @@ jobs:
           sed -i "s/^EXTRAVERSION =.*/EXTRAVERSION = -${fixed_version}/" Makefile
           echo "CONFIG_LOCALVERSION=\"-${fixed_version}\"" >> arch/arm64/configs/vendor/xiaomi/perseus.config
 
-      - name: 执行编译
+      - name: 执行编译 (自动执行主逻辑)
         run: |
           cd kernel-source
-          # 修正路径：mvaisakh 的 clang 内部可能有嵌套文件夹
           export PATH=$GITHUB_WORKSPACE/clang/bin:$GITHUB_WORKSPACE/gcc64/bin:$GITHUB_WORKSPACE/gcc32/bin:$PATH
           export ARCH=arm64
           export CLANG_TRIPLE=aarch64-linux-gnu-
@@ -57,9 +54,12 @@ jobs:
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           
           mkdir -p out
+          # 1. 生成基础配置
           make O=out mi845_defconfig
+          # 2. 合并 Mix3 (perseus) 专用配置
           ARCH=arm64 scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           
+          # 3. 开始全自动化编译
           make -j$(nproc --all) O=out \
                         CC=clang \
                         CLANG_TRIPLE=aarch64-linux-gnu- \
@@ -72,7 +72,7 @@ jobs:
                         OBJDUMP=llvm-objdump \
                         STRIP=llvm-strip
 
-      - name: 打包 AnyKernel3
+      - name: 打包 AnyKernel3 (生成直刷包)
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
           if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
@@ -85,7 +85,7 @@ jobs:
           sed -i 's/device.name2=toro/device.name2=mix3/' anykernel.sh
           zip -r ../Mix3-Kernel-Flashable.zip *
 
-      - name: 上传
+      - name: 上传编译结果
         uses: actions/upload-artifact@v4
         with:
           name: Mix3-L21-Kernel
