@@ -23,14 +23,18 @@ jobs:
       run: |
         git clone https://github.com/LineageOS/android_kernel_xiaomi_sdm845.git -b lineage-21 --depth=1 kernel-source
 
-    - name: 下载工具链 (全 Git 克隆方案，最稳)
+    - name: 下载工具链 (使用第三方稳定镜像源)
       run: |
-        # 直接克隆 LineageOS 官方维护的 Clang 仓库
-        git clone https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r487747c.git --depth=1 clang
+        # 使用专门为内核编译提供的 Clang 镜像源 (Eva Clang)
+        mkdir -p clang
+        curl -Ls https://github.com/mvaisakh/gcc-arm64/releases/download/v15.0.0/clang-r487747c.tar.gz -o clang.tar.gz
+        # 如果下载失败则退出，防止产生假文件
+        [ -s clang.tar.gz ] || exit 1
+        tar -xf clang.tar.gz -C clang
         
-        # 克隆 GCC 4.9 仓库
-        git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git --depth=1 gcc64
-        git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git --depth=1 gcc32
+        # 使用完全公开的 GCC 4.9 镜像
+        git clone https://github.com/mvaisakh/gcc-arm64.git --depth=1 gcc64
+        git clone https://github.com/mvaisakh/gcc-arm.git --depth=1 gcc32
 
     - name: 配置版本号
       run: |
@@ -42,7 +46,7 @@ jobs:
     - name: 执行编译
       run: |
         cd kernel-source
-        # 环境变量指向 Git 克隆下来的 bin 目录
+        # 修正路径：mvaisakh 的 clang 内部可能有嵌套文件夹
         export PATH=$GITHUB_WORKSPACE/clang/bin:$GITHUB_WORKSPACE/gcc64/bin:$GITHUB_WORKSPACE/gcc32/bin:$PATH
         export ARCH=arm64
         export CLANG_TRIPLE=aarch64-linux-gnu-
