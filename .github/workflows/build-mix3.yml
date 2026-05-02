@@ -33,55 +33,56 @@ jobs:
             clang
             gcc64
             gcc32
-          key: toolchain-sdm845-aosp-v3
+          key: toolchain-sdm845-clang12-v1
 
-      - name: 下载工具链 (缓存未命中时执行)
+      - name: 下载工具链 (锁定 Clang 12 黄金版本)
         if: steps.cache-toolchain.outputs.cache-hit != 'true'
         run: |
-          git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 --depth=1 clang
+          # 锁定 AOSP 官方 Clang 12 (r416183b)
+          git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 --depth=1 -b busytown-clang-r416183b clang
           git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 --depth=1 gcc64
           git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 --depth=1 gcc32
 
-      - name: 执行核心编译 (终极防错整合版)
+      - name: 执行核心编译 (Clang 12 适配版)
         run: |
           cd kernel-source
           
           # 1. 精准路径定位
-          CLANG_DIR=$GITHUB_WORKSPACE/clang
-          # 寻找 clang 文件夹下包含 bin/clang 的最深层目录
-          CLANG_BIN=$(find $CLANG_DIR -name "clang" -type f | xargs dirname | grep "bin" | head -n 1)
-          # GCC 路径通常固定在 bin 目录下
+          CLANG_BIN=$(find $GITHUB_WORKSPACE/clang -name "clang" -type f | xargs dirname | grep "bin" | head -n 1)
           GCC64_BIN=$GITHUB_WORKSPACE/gcc64/bin
           GCC32_BIN=$GITHUB_WORKSPACE/gcc32/bin
           
-          echo "Using Clang from: $CLANG_BIN"
-          
-          # 2. 环境变量锁定 (拒绝伪装，直接使用绝对路径)
+          # 2. 环境变量强制注入
           export PATH=$CLANG_BIN:$GCC64_BIN:$GCC32_BIN:$PATH
           export ARCH=arm64
           export SUBARCH=arm64
+          export CC=clang
+          export HOSTCC=gcc
           export CLANG_TRIPLE=aarch64-linux-gnu-
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           
           mkdir -p out
           
-          # 3. 生成配置 (显式分离 CC 和 HOSTCC，解决 compiler_wrapper 报错)
-          make O=out ARCH=arm64 CC=clang HOSTCC=gcc sdm845_defconfig
+          # 3. 生成配置 (锁定 CC=clang 绕过检查)
+          make O=out ARCH=arm64 CC=clang sdm845_defconfig
           
           # 4. 合并小米 Mix 3 专用配置
           if [ -f arch/arm64/configs/vendor/xiaomi/perseus.config ]; then
-            ARCH=arm64 CC=clang HOSTCC=gcc scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
+            ARCH=arm64 CC=clang scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           fi
           
-          # 5. 同步编译器检查并绕过警告报错
-          make O=out ARCH=arm64 CC=clang HOSTCC=gcc CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- silentoldconfig
+          # 5. 【暴力防雷】在 Clang 12 下直接写死堆栈保护配置，防止 Makefile 逻辑抽风
+          echo "CONFIG_CC_STACKPROTECTOR_STRONG=y" >> out/.config
+          
+          # 6. 同步配置 (使用 olddefconfig 自动补全)
+          make O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- olddefconfig
 
-          # 6. 正式全量编译 (整合 LLVM 全家桶防错参数)
+          # 7. 全量编译 (Clang 12 环境)
+          # 注意：LD=ld.lld 在 Clang 12 中非常稳定
           make -j$(nproc --all) O=out \
                         ARCH=arm64 \
                         CC=clang \
-                        HOSTCC=gcc \
                         CLANG_TRIPLE=aarch64-linux-gnu- \
                         CROSS_COMPILE=aarch64-linux-android- \
                         CROSS_COMPILE_ARM32=arm-linux-androideabi- \
@@ -90,27 +91,21 @@ jobs:
                         NM=llvm-nm \
                         OBJCOPY=llvm-objcopy \
                         OBJDUMP=llvm-objdump \
-                        STRIP=llvm-strip \
-                        OBJSIZE=llvm-size \
-                        V=0
+                        STRIP=llvm-strip
 
-      - name: 打包 AnyKernel3
+      - name: 打包直刷包
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
-          if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
-              cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
-          elif [ -f kernel-source/out/arch/arm64/boot/Image.gz ]; then
-              cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/
-          elif [ -f kernel-source/out/arch/arm64/boot/Image ]; then
-              cp kernel-source/out/arch/arm64/boot/Image AnyKernel3/
-          fi
+          # 智能匹配生成的镜像文件
+          [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ] && cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+          [ -f kernel-source/out/arch/arm64/boot/Image.gz ] && cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/
           
           cd AnyKernel3
           sed -i 's/device.name1=maguro/device.name1=perseus/' anykernel.sh
-          zip -r ../Mix3-Kernel-Flashable.zip *
+          zip -r ../Mix3-L21-Kernel.zip *
 
-      - name: 上传
+      - name: 上传产出物
         uses: actions/upload-artifact@v4
         with:
-          name: Mix3-Kernel-Build
-          path: Mix3-Kernel-Flashable.zip
+          name: Mix3-Kernel-Clang12
+          path: Mix3-L21-Kernel.zip
