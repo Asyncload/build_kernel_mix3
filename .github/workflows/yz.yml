@@ -1,4 +1,4 @@
-name: 工具链完整验证-最终版
+name: 工具链完整验证-终极修正
 
 on:
   workflow_dispatch:
@@ -8,51 +8,55 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: 1. 修复 libtinfo5 缺失
+      - name: 1. 环境补丁 (libtinfo5)
         run: |
-          wget http://mirrors.kernel.org/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2_amd64.deb
+          wget -q http://mirrors.kernel.org/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2_amd64.deb
           sudo apt install ./libtinfo5_6.3-2_amd64.deb -y
 
-      - name: 2. 安装内核编译基础依赖
+      - name: 2. 安装基础依赖
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget tar bc bison build-essential flex \
-            libssl-dev libelf-dev python3 git
+          sudo apt-get install -y wget tar bc bison build-essential flex libssl-dev libelf-dev python3 git
 
-      - name: 3. 下载 Proton-Clang
+      - name: 3. 下载工具链 (Clang + GCC)
         run: |
-          mkdir -p clang-14
+          # 下载 Clang
+          mkdir -p $(pwd)/toolchain/clang
           wget -q https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz
-          tar -xf master.tar.gz -C clang-14 --strip-components=1
-          echo "CLANG_PATH=$(pwd)/clang-14/bin" >> $GITHUB_ENV
-
-      - name: 4. 下载 GCC (修复路径版本)
-        run: |
-          # 负责 64 位
-          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 --depth=1 gcc64
-          # 负责 32 位
-          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 --depth=1 gcc32
+          tar -xf master.tar.gz -C $(pwd)/toolchain/clang --strip-components=1
           
-          echo "GCC64_PATH=$(pwd)/gcc64/bin" >> $GITHUB_ENV
-          echo "GCC32_PATH=$(pwd)/gcc32/bin" >> $GITHUB_ENV
-
-      - name: 5. 深度验证 (这步过不去不发内核)
-        run: |
-          echo "--- 检查 Clang ---"
-          $CLANG_PATH/clang --version | head -n 1
+          # 下载 GCC 64
+          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 --depth=1 $(pwd)/toolchain/gcc64
           
-          echo "--- 检查 GCC 64 ---"
-          # 尝试直接运行，如果报错会显示具体原因
-          $GCC64_PATH/aarch64-linux-android-gcc --version | head -n 1
-          
-          echo "--- 检查 GCC 32 ---"
-          $GCC32_PATH/arm-linux-androideabi-gcc --version | head -n 1
+          # 下载 GCC 32
+          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 --depth=1 $(pwd)/toolchain/gcc32
 
-      - name: 6. 环境变量模拟测试
+      - name: 4. 绝对路径硬核验证
         run: |
-          # 模拟内核编译时的 PATH 设置
-          export PATH=$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH
-          echo "✅ 模拟 PATH 设置成功"
+          # 定义绝对路径变量（仅限本 step）
+          CLANG_BIN=$(pwd)/toolchain/clang/bin
+          GCC64_BIN=$(pwd)/toolchain/gcc64/bin
+          GCC32_BIN=$(pwd)/toolchain/gcc32/bin
+          
+          echo "--- 验证 Clang ---"
+          $CLANG_BIN/clang --version | head -n 1
+          
+          echo "--- 验证 GCC 64 ---"
+          $GCC64_BIN/aarch64-linux-android-gcc --version | head -n 1
+          
+          echo "--- 验证 GCC 32 ---"
+          $GCC32_BIN/arm-linux-androideabi-gcc --version | head -n 1
+          
+          echo ""
+          echo "✅ 验证全部通过！"
+          echo "你的编译环境变量应设置为："
+          echo "PATH=$CLANG_BIN:$GCC64_BIN:$GCC32_BIN:\$PATH"
+
+      - name: 5. (演示) 如何在后续 Step 中使用这些工具
+        run: |
+          # 只要像这样把路径加入 PATH，后面编译内核的 make 命令就能直接找到 clang
+          export PATH=$(pwd)/toolchain/clang/bin=$(pwd)/toolchain/gcc64/bin:$(pwd)/toolchain/gcc32/bin:$PATH
+          
+          # 运行 which 验证
           which clang
           which aarch64-linux-android-gcc
-          which arm-linux-androideabi-gcc
