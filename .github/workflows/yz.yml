@@ -1,39 +1,47 @@
-name: verify_toolchain_download
+name: 工具链验证测试
 
 on:
-  workflow_dispatch: # 手动触发验证
+  workflow_dispatch: # 手动触发
 
 jobs:
   verify:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+
     steps:
-      - name: 验证下载逻辑 (Clang 12)
+      - name: 安装基础环境
         run: |
-          # 1. 下载 Clang 12 (通过 Commit ID 锁定)
-          mkdir -p clang
-          cd clang
-          git init
-          git remote add origin https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86
-          echo "正在抓取 Clang 12 特定提交..."
-          git fetch --depth 1 origin 69d0233ad1f38e211833d7b819f041217e1355b2
-          git checkout FETCH_HEAD
-          cd ..
+          sudo apt-get update
+          sudo apt-get install -y wget tar libtinfo5
+
+      - name: 下载并解压 Proton-Clang
+        run: |
+          mkdir -p clang-14
+          # 这个链接是我们刚才验证过的
+          wget -q https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz
+          tar -xf master.tar.gz -C clang-14 --strip-components=1
+
+      - name: 验证 Clang 版本
+        id: check_clang
+        run: |
+          echo "--- 正在检查 Clang 路径 ---"
+          ls -l clang-14/bin/clang
+          echo "--- 正在运行版本输出 ---"
+          ./clang-14/bin/clang --version
           
-          # 2. 下载 GCC
-          echo "正在下载 GCC64..."
+      - name: 下载 GCC 4.9 (Google 官方)
+        run: |
+          # 验证 GCC 是否也能正常拉取
           git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 --depth=1 gcc64
-          echo "正在下载 GCC32..."
           git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 --depth=1 gcc32
-          
-          # 3. 检查成果
-          echo "--- 验证结果 ---"
-          if [ -f "clang/bin/clang" ]; then
-            echo "✅ Clang 下载成功！版本信息："
-            ./clang/bin/clang --version
-          else
-            echo "❌ Clang 下载失败，未找到 bin/clang"
-            find clang -maxdepth 3
-          fi
-          
-          [ -f "gcc64/bin/aarch64-linux-android-gcc" ] && echo "✅ GCC64 下载成功" || echo "❌ GCC64 失败"
-          [ -f "gcc32/bin/arm-linux-androideabi-gcc" ] && echo "✅ GCC32 下载成功" || echo "❌ GCC32 失败"
+
+      - name: 验证 GCC 版本
+        run: |
+          ./gcc64/bin/aarch64-linux-android-gcc --version
+          ./gcc32/bin/arm-linux-androideabi-gcc --version
+
+      - name: 最终环境汇总
+        run: |
+          echo "✅ 验证完成！"
+          echo "Clang 路径: $(pwd)/clang-14/bin"
+          echo "GCC64 路径: $(pwd)/gcc64/bin"
+          echo "GCC32 路径: $(pwd)/gcc32/bin"
