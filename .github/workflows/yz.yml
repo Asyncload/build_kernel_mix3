@@ -1,0 +1,39 @@
+name: verify_toolchain_download
+
+on:
+  workflow_dispatch: # 手动触发验证
+
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: 验证下载逻辑 (Clang 12)
+        run: |
+          # 1. 下载 Clang 12 (通过 Commit ID 锁定)
+          mkdir -p clang
+          cd clang
+          git init
+          git remote add origin https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86
+          echo "正在抓取 Clang 12 特定提交..."
+          git fetch --depth 1 origin 69d0233ad1f38e211833d7b819f041217e1355b2
+          git checkout FETCH_HEAD
+          cd ..
+          
+          # 2. 下载 GCC
+          echo "正在下载 GCC64..."
+          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 --depth=1 gcc64
+          echo "正在下载 GCC32..."
+          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 --depth=1 gcc32
+          
+          # 3. 检查成果
+          echo "--- 验证结果 ---"
+          if [ -f "clang/bin/clang" ]; then
+            echo "✅ Clang 下载成功！版本信息："
+            ./clang/bin/clang --version
+          else
+            echo "❌ Clang 下载失败，未找到 bin/clang"
+            find clang -maxdepth 3
+          fi
+          
+          [ -f "gcc64/bin/aarch64-linux-android-gcc" ] && echo "✅ GCC64 下载成功" || echo "❌ GCC64 失败"
+          [ -f "gcc32/bin/arm-linux-androideabi-gcc" ] && echo "✅ GCC32 下载成功" || echo "❌ GCC32 失败"
