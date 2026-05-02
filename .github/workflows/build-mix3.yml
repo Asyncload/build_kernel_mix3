@@ -24,41 +24,41 @@ jobs:
         run: |
           git clone https://github.com/LineageOS/android_kernel_xiaomi_sdm845.git -b lineage-21 --depth=1 kernel-source
 
-      - name: 下载工具链 (精准锁定 main-kernel 分支)
+      - name: 下载工具链 (模糊匹配 Clang 14)
         run: |
-          # 1. 下载 Clang 14 (r450784d)
-          mkdir -p clang-toolchain
-          cd clang-toolchain
-          git init
-          git remote add origin https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86
-          git config core.sparseCheckout true
-          echo "clang-r450784d/*" >> .git/info/sparse-checkout
-          # 使用你探测到的正确分支 main-kernel
-          git pull --depth=1 origin main-kernel
+          # 1. 直接克隆 main-kernel 分支，使用过滤器加快速度
+          git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 -b main-kernel --depth=1 --filter=blob:none clang-toolchain
           
-          # 2. 物理验证下载成果
-          if [ -f "clang-r450784d/bin/clang" ]; then
-            echo "✅ Clang 14 验证成功"
-            ./clang-r450784d/bin/clang --version
+          cd clang-toolchain
+          # 2. 自动寻找以 clang-r450784 开头的实际文件夹（处理后缀变动）
+          REAL_CLANG_DIR=$(ls -d clang-r450784* | head -n 1)
+          
+          if [ -z "$REAL_CLANG_DIR" ]; then
+            echo "❌ 找不到 Clang 14 目录，当前目录下的候选版本有："
+            ls -d clang-r*
+            exit 1
+          fi
+          
+          echo "✅ 锁定工具链目录: $REAL_CLANG_DIR"
+          
+          # 3. 验证并存储绝对路径
+          if [ -f "$REAL_CLANG_DIR/bin/clang" ]; then
+            ./$REAL_CLANG_DIR/bin/clang --version
+            echo "FINAL_CLANG_PATH=$(pwd)/$REAL_CLANG_DIR/bin" >> $GITHUB_ENV
           else
-            echo "❌ 验证失败，尝试列出当前目录结构："
-            ls -R
+            echo "❌ 找到目录但 bin/clang 不存在"
             exit 1
           fi
           cd ..
 
-          # 3. 下载 GCC 4.9 (内核辅助工具链)
+          # 4. 下载辅助 GCC 4.9
           git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 --depth=1 gcc64
           git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 --depth=1 gcc32
 
       - name: 执行核心编译
         run: |
-          # 1. 路径设置
-          CLANG_BIN=$GITHUB_WORKSPACE/clang-toolchain/clang-r450784d/bin
-          GCC64_BIN=$GITHUB_WORKSPACE/gcc64/bin
-          GCC32_BIN=$GITHUB_WORKSPACE/gcc32/bin
-          
-          export PATH=$CLANG_BIN:$GCC64_BIN:$GCC32_BIN:$PATH
+          # 1. 环境变量注入
+          export PATH=$FINAL_CLANG_PATH:$GITHUB_WORKSPACE/gcc64/bin:$GITHUB_WORKSPACE/gcc32/bin:$PATH
           export ARCH=arm64
           export SUBARCH=arm64
           export CC=clang
@@ -67,21 +67,23 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           
+          echo "Current Path: $PATH"
+          
           cd kernel-source
           mkdir -p out
           
-          # 2. 生成配置 (锁定 CC=clang)
+          # 2. 生成配置
           make O=out ARCH=arm64 CC=clang sdm845_defconfig
           
-          # 3. 合并小米 Mix 3 专用配置 (perseus)
+          # 3. 合并小米 Mix 3 (perseus) 专用配置
           if [ -f arch/arm64/configs/vendor/xiaomi/perseus.config ]; then
             scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           fi
           
-          # 4. 自动补全配置 (解决新老内核参数差异)
+          # 4. 刷新配置
           make O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- olddefconfig
 
-          # 5. 全量编译 (使用 LLVM 工具链优化兼容性)
+          # 5. 全量编译
           make -j$(nproc --all) O=out \
                         ARCH=arm64 \
                         CC=clang \
@@ -95,10 +97,9 @@ jobs:
                         OBJDUMP=llvm-objdump \
                         STRIP=llvm-strip
 
-      - name: 打包 AnyKernel3 直刷包
+      - name: 打包直刷包 (AnyKernel3)
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
-          # 拷贝生成的内核镜像
           if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
             cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
           elif [ -f kernel-source/out/arch/arm64/boot/Image.gz ]; then
@@ -107,10 +108,10 @@ jobs:
           
           cd AnyKernel3
           sed -i 's/device.name1=maguro/device.name1=perseus/' anykernel.sh
-          zip -r ../Mix3-L21-Kernel.zip *
+          zip -r ../Mix3-Kernel-Clang14.zip *
 
-      - name: 上传内核包
+      - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: Mix3-Kernel-Clang14
-          path: Mix3-L21-Kernel.zip
+          name: Mix3-Kernel-Result
+          path: Mix3-Kernel-Clang14.zip
