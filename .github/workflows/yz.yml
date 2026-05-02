@@ -1,62 +1,42 @@
-name: 工具链完整验证-终极修正
+name: GCC-4.9-专项修复验证
 
 on:
   workflow_dispatch:
 
 jobs:
-  verify:
+  verify_gcc:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: 1. 环境补丁 (libtinfo5)
+      - name: 1. 下载 GCC (Google 官方 AOSP 源)
         run: |
-          wget -q http://mirrors.kernel.org/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2_amd64.deb
-          sudo apt install ./libtinfo5_6.3-2_amd64.deb -y
+          # 负责 64 位内核主体
+          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 --depth=1 $(pwd)/gcc64
+          # 负责 32 位兼容层 (VDSO等)
+          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 --depth=1 $(pwd)/gcc32
 
-      - name: 2. 安装基础依赖
+      - name: 2. 深度扫描路径 (解决找不到文件的问题)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y wget tar bc bison build-essential flex libssl-dev libelf-dev python3 git
+          echo "--- 扫描 GCC64 bin 目录 ---"
+          ls -F $(pwd)/gcc64/bin/ | grep "gcc"
+          
+          echo "--- 扫描 GCC32 bin 目录 ---"
+          ls -F $(pwd)/gcc32/bin/ | grep "gcc"
 
-      - name: 3. 下载工具链 (Clang + GCC)
+      - name: 3. 运行权限修复与执行测试
         run: |
-          # 下载 Clang
-          mkdir -p $(pwd)/toolchain/clang
-          wget -q https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz
-          tar -xf master.tar.gz -C $(pwd)/toolchain/clang --strip-components=1
+          # 确保有执行权限
+          chmod +x $(pwd)/gcc64/bin/*
+          chmod +x $(pwd)/gcc32/bin/*
           
-          # 下载 GCC 64
-          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 --depth=1 $(pwd)/toolchain/gcc64
+          echo "--- 测试 GCC 64 版本 ---"
+          $(pwd)/gcc64/bin/aarch64-linux-android-gcc --version
           
-          # 下载 GCC 32
-          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 --depth=1 $(pwd)/toolchain/gcc32
+          echo "--- 测试 GCC 32 版本 ---"
+          $(pwd)/gcc32/bin/arm-linux-androideabi-gcc --version
 
-      - name: 4. 绝对路径硬核验证
+      - name: 4. 依赖库检查 (关键步骤)
         run: |
-          # 定义绝对路径变量（仅限本 step）
-          CLANG_BIN=$(pwd)/toolchain/clang/bin
-          GCC64_BIN=$(pwd)/toolchain/gcc64/bin
-          GCC32_BIN=$(pwd)/toolchain/gcc32/bin
-          
-          echo "--- 验证 Clang ---"
-          $CLANG_BIN/clang --version | head -n 1
-          
-          echo "--- 验证 GCC 64 ---"
-          $GCC64_BIN/aarch64-linux-android-gcc --version | head -n 1
-          
-          echo "--- 验证 GCC 32 ---"
-          $GCC32_BIN/arm-linux-androideabi-gcc --version | head -n 1
-          
-          echo ""
-          echo "✅ 验证全部通过！"
-          echo "你的编译环境变量应设置为："
-          echo "PATH=$CLANG_BIN:$GCC64_BIN:$GCC32_BIN:\$PATH"
-
-      - name: 5. (演示) 如何在后续 Step 中使用这些工具
-        run: |
-          # 只要像这样把路径加入 PATH，后面编译内核的 make 命令就能直接找到 clang
-          export PATH=$(pwd)/toolchain/clang/bin=$(pwd)/toolchain/gcc64/bin:$(pwd)/toolchain/gcc32/bin:$PATH
-          
-          # 运行 which 验证
-          which clang
-          which aarch64-linux-android-gcc
+          # 有时 GCC 4.9 需要 32 位运行库，或者特定的 libmpfr
+          echo "--- 检查 GCC 依赖 ---"
+          ldd $(pwd)/gcc64/bin/aarch64-linux-android-gcc || echo "无法使用 ldd 检查"
