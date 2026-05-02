@@ -25,13 +25,25 @@ jobs:
         run: |
           git clone https://github.com/LineageOS/android_kernel_xiaomi_sdm845.git -b lineage-21 --depth=1 kernel-source
 
-      - name: 下载工具链 (锁定 AOSP 官方源)
+      - name: 缓存工具链 (提高二次编译速度)
+        id: cache-toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            clang
+            gcc64
+            gcc32
+          # 只要这里的 key 不变，下次运行就会直接跳过下载
+          key: toolchain-sdm845-aosp-v1
+
+      - name: 下载工具链 (仅在无缓存时执行)
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
         run: |
           git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 --depth=1 clang
           git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 --depth=1 gcc64
           git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 --depth=1 gcc32
 
-      - name: 执行编译 (修正编译器检查)
+      - name: 执行编译 (暴力掉包 + 缓存加速)
         run: |
           cd kernel-source
           
@@ -40,29 +52,34 @@ jobs:
           GCC64_BIN=$(find $GITHUB_WORKSPACE/gcc64 -name "aarch64-linux-android-gcc" -type f | xargs dirname | head -n 1)
           GCC32_BIN=$(find $GITHUB_WORKSPACE/gcc32 -name "arm-linux-androideabi-gcc" -type f | xargs dirname | head -n 1)
           
-          echo "Clang Path: $CLANG_BIN"
+          # 2. 暴力掉包：创建一个假的 gcc 软链接到 clang
+          mkdir -p $GITHUB_WORKSPACE/fake_bin
+          ln -sf $CLANG_BIN/clang $GITHUB_WORKSPACE/fake_bin/gcc
+          ln -sf $CLANG_BIN/clang $GITHUB_WORKSPACE/fake_bin/aarch64-linux-gnu-gcc
           
-          # 2. 设置环境变量
-          export PATH=$CLANG_BIN:$GCC64_BIN:$GCC32_BIN:$PATH
+          # 3. 设置环境变量
+          export PATH=$GITHUB_WORKSPACE/fake_bin:$CLANG_BIN:$GCC64_BIN:$GCC32_BIN:$PATH
           export ARCH=arm64
+          export SUBARCH=arm64
           export CLANG_TRIPLE=aarch64-linux-gnu-
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
+          export CC=clang
           
           mkdir -p out
           
-          # 3. 生成配置 (关键：在此步骤就指定 CC=clang 以通过编译器检查)
+          # 4. 生成配置并明确指定编译器
           make O=out ARCH=arm64 CC=clang sdm845_defconfig
           
-          # 4. 合并小米 Mix 3 专用配置
+          # 5. 合并配置
           if [ -f arch/arm64/configs/vendor/xiaomi/perseus.config ]; then
-            ARCH=arm64 scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
+            ARCH=arm64 CC=clang scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           fi
           
-          # 5. 再次确认配置并同步编译器状态
+          # 6. 再次强制刷新配置并绕过检查
           make O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- silentoldconfig
 
-          # 6. 正式开始全量编译
+          # 7. 开始编译
           make -j$(nproc --all) O=out \
                         ARCH=arm64 \
                         CC=clang \
@@ -76,20 +93,17 @@ jobs:
                         OBJDUMP=llvm-objdump \
                         STRIP=llvm-strip
 
-      - name: 打包 AnyKernel3 (直刷包)
+      - name: 打包直刷包
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
-          # 寻找编译出的镜像文件
           [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ] && cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
           [ -f kernel-source/out/arch/arm64/boot/Image.gz ] && cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/
-          
           cd AnyKernel3
           sed -i 's/device.name1=maguro/device.name1=perseus/' anykernel.sh
-          sed -i 's/device.name2=toro/device.name2=mix3/' anykernel.sh
-          zip -r ../Mix3-Kernel-Flashable.zip *
+          zip -r ../Mix3-Kernel.zip *
 
-      - name: 上传产出物
+      - name: 上传
         uses: actions/upload-artifact@v4
         with:
           name: Mix3-Kernel-Result
-          path: Mix3-Kernel-Flashable.zip
+          path: Mix3-Kernel.zip
