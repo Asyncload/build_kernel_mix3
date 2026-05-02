@@ -25,20 +25,19 @@ jobs:
         run: |
           git clone https://github.com/LineageOS/android_kernel_xiaomi_sdm845.git -b lineage-21 --depth=1 kernel-source
 
-      - name: 下载工具链 (AOSP 官方全量 Git 克隆)
+      - name: 下载 LineageOS 官方工具链
         run: |
-          # 1. 克隆 Clang
-          git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 --depth=1 clang
-          
-          # 2. 克隆 GCC (不指定分支，自动匹配默认分支)
-          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 --depth=1 gcc64
-          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 --depth=1 gcc32
+          # 克隆 Clang
+          git clone https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r487747c.git --depth=1 clang
+          # 克隆 GCC (不指定分支，提高兼容性)
+          git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git --depth=1 gcc64
+          git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git --depth=1 gcc32
 
-      - name: 执行编译 (全智能路径版)
+      - name: 执行编译 (修正配置文件名)
         run: |
           cd kernel-source
           
-          # 动态寻找所有工具链的 bin 目录
+          # 动态定位 bin 目录
           CLANG_BIN=$(find $GITHUB_WORKSPACE/clang -name "clang" -type f | xargs dirname | head -n 1)
           GCC64_BIN=$(find $GITHUB_WORKSPACE/gcc64 -name "aarch64-linux-android-gcc" -type f | xargs dirname | head -n 1)
           GCC32_BIN=$(find $GITHUB_WORKSPACE/gcc32 -name "arm-linux-androideabi-gcc" -type f | xargs dirname | head -n 1)
@@ -47,10 +46,6 @@ jobs:
           echo "Found GCC64 at: $GCC64_BIN"
           echo "Found GCC32 at: $GCC32_BIN"
           
-          # 检查路径是否获取成功
-          [ -z "$CLANG_BIN" ] && echo "Error: Clang not found" && exit 1
-          
-          # 设置环境变量
           export PATH=$CLANG_BIN:$GCC64_BIN:$GCC32_BIN:$PATH
           export ARCH=arm64
           export CLANG_TRIPLE=aarch64-linux-gnu-
@@ -59,13 +54,14 @@ jobs:
           
           mkdir -p out
           
-          # 1. 生成基础配置
-          make O=out mi845_defconfig
+          # 修正：LineageOS sdm845 源码中正确的 defconfig 名字是 sdm845_defconfig
+          make O=out sdm845_defconfig
           
-          # 2. 合并 Mix3 (perseus) 专用配置
-          ARCH=arm64 scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
+          # 合并 Mix 3 专用配置
+          if [ -f arch/arm64/configs/vendor/xiaomi/perseus.config ]; then
+            ARCH=arm64 scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
+          fi
           
-          # 3. 开始全量编译
           make -j$(nproc --all) O=out \
                         CC=clang \
                         CLANG_TRIPLE=aarch64-linux-gnu- \
@@ -78,10 +74,9 @@ jobs:
                         OBJDUMP=llvm-objdump \
                         STRIP=llvm-strip
 
-      - name: 打包 AnyKernel3 (生成直刷包)
+      - name: 打包 AnyKernel3
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
-          # 查找生成的内核镜像
           if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
               cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
           elif [ -f kernel-source/out/arch/arm64/boot/Image.gz ]; then
@@ -91,13 +86,12 @@ jobs:
           fi
           
           cd AnyKernel3
-          # 修改适配机型
           sed -i 's/device.name1=maguro/device.name1=perseus/' anykernel.sh
           sed -i 's/device.name2=toro/device.name2=mix3/' anykernel.sh
-          zip -r ../Mix3-L21-Kernel-Flashable.zip *
+          zip -r ../Mix3-Kernel.zip *
 
-      - name: 上传编译结果
+      - name: 上传
         uses: actions/upload-artifact@v4
         with:
-          name: Mix3-L21-Kernel-Artifact
-          path: Mix3-L21-Kernel-Flashable.zip
+          name: Mix3-L21-Kernel
+          path: Mix3-Kernel.zip
