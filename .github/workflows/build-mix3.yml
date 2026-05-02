@@ -23,20 +23,21 @@ jobs:
 
       - name: 克隆内核源码
         run: |
+          # 内核源码在 GitHub 是公开的，可以直接拉取
           git clone https://github.com/LineageOS/android_kernel_xiaomi_sdm845.git -b lineage-21 --depth=1 kernel-source
 
-      - name: 下载 LineageOS 官方工具链 (修正地址)
+      - name: 下载工具链 (强制使用 Google 官方公开源)
         run: |
-          # 使用更通用的地址，去掉 .git 后缀，确保公开访问
-          git clone https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r487747c --depth=1 clang
-          git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 --depth=1 gcc64
-          git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 --depth=1 gcc32
+          # 彻底弃用 github.com 链接，改用无需登录的 Google 源
+          git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 --depth=1 clang
+          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 --depth=1 gcc64
+          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 --depth=1 gcc32
 
-      - name: 执行编译 (智能路径与配置修正)
+      - name: 执行编译 (全智能路径版)
         run: |
           cd kernel-source
           
-          # 自动寻找工具链 bin 目录
+          # 自动寻回 bin 目录
           CLANG_BIN=$(find $GITHUB_WORKSPACE/clang -name "clang" -type f | xargs dirname | head -n 1)
           GCC64_BIN=$(find $GITHUB_WORKSPACE/gcc64 -name "aarch64-linux-android-gcc" -type f | xargs dirname | head -n 1)
           GCC32_BIN=$(find $GITHUB_WORKSPACE/gcc32 -name "arm-linux-androideabi-gcc" -type f | xargs dirname | head -n 1)
@@ -52,14 +53,15 @@ jobs:
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           
           mkdir -p out
-          # 使用 sdm845 基础配置
+          # 使用通用的 sdm845 配置
           make O=out sdm845_defconfig
           
-          # 尝试合并小米 Mix 3 (perseus) 专用配置
+          # 合并小米 Mix 3 专用配置 (如果文件存在)
           if [ -f arch/arm64/configs/vendor/xiaomi/perseus.config ]; then
             ARCH=arm64 scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           fi
           
+          # 开始正式编译
           make -j$(nproc --all) O=out \
                         CC=clang \
                         CLANG_TRIPLE=aarch64-linux-gnu- \
@@ -86,10 +88,10 @@ jobs:
           cd AnyKernel3
           sed -i 's/device.name1=maguro/device.name1=perseus/' anykernel.sh
           sed -i 's/device.name2=toro/device.name2=mix3/' anykernel.sh
-          zip -r ../Mix3-Kernel-L21.zip *
+          zip -r ../Mix3-Kernel.zip *
 
       - name: 上传
         uses: actions/upload-artifact@v4
         with:
-          name: Mix3-Kernel-Flashable
-          path: Mix3-Kernel-L21.zip
+          name: Mix3-L21-Kernel
+          path: Mix3-Kernel.zip
