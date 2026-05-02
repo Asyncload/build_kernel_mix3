@@ -23,29 +23,26 @@ jobs:
 
       - name: 克隆内核源码
         run: |
-          # 内核源码在 GitHub 是公开的，可以直接拉取
           git clone https://github.com/LineageOS/android_kernel_xiaomi_sdm845.git -b lineage-21 --depth=1 kernel-source
 
-      - name: 下载工具链 (强制使用 Google 官方公开源)
+      - name: 下载工具链 (锁定 AOSP 官方源)
         run: |
-          # 彻底弃用 github.com 链接，改用无需登录的 Google 源
           git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 --depth=1 clang
           git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 --depth=1 gcc64
           git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 --depth=1 gcc32
 
-      - name: 执行编译 (全智能路径版)
+      - name: 执行编译 (修正编译器检查)
         run: |
           cd kernel-source
           
-          # 自动寻回 bin 目录
+          # 1. 自动定位工具链 bin 目录
           CLANG_BIN=$(find $GITHUB_WORKSPACE/clang -name "clang" -type f | xargs dirname | head -n 1)
           GCC64_BIN=$(find $GITHUB_WORKSPACE/gcc64 -name "aarch64-linux-android-gcc" -type f | xargs dirname | head -n 1)
           GCC32_BIN=$(find $GITHUB_WORKSPACE/gcc32 -name "arm-linux-androideabi-gcc" -type f | xargs dirname | head -n 1)
           
-          echo "Found Clang at: $CLANG_BIN"
-          echo "Found GCC64 at: $GCC64_BIN"
-          echo "Found GCC32 at: $GCC32_BIN"
+          echo "Clang Path: $CLANG_BIN"
           
+          # 2. 设置环境变量
           export PATH=$CLANG_BIN:$GCC64_BIN:$GCC32_BIN:$PATH
           export ARCH=arm64
           export CLANG_TRIPLE=aarch64-linux-gnu-
@@ -53,16 +50,21 @@ jobs:
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           
           mkdir -p out
-          # 使用通用的 sdm845 配置
-          make O=out sdm845_defconfig
           
-          # 合并小米 Mix 3 专用配置 (如果文件存在)
+          # 3. 生成配置 (关键：在此步骤就指定 CC=clang 以通过编译器检查)
+          make O=out ARCH=arm64 CC=clang sdm845_defconfig
+          
+          # 4. 合并小米 Mix 3 专用配置
           if [ -f arch/arm64/configs/vendor/xiaomi/perseus.config ]; then
             ARCH=arm64 scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           fi
           
-          # 开始正式编译
+          # 5. 再次确认配置并同步编译器状态
+          make O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- silentoldconfig
+
+          # 6. 正式开始全量编译
           make -j$(nproc --all) O=out \
+                        ARCH=arm64 \
                         CC=clang \
                         CLANG_TRIPLE=aarch64-linux-gnu- \
                         CROSS_COMPILE=aarch64-linux-android- \
@@ -74,24 +76,20 @@ jobs:
                         OBJDUMP=llvm-objdump \
                         STRIP=llvm-strip
 
-      - name: 打包 AnyKernel3
+      - name: 打包 AnyKernel3 (直刷包)
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
-          if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
-              cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
-          elif [ -f kernel-source/out/arch/arm64/boot/Image.gz ]; then
-              cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/
-          else
-              cp kernel-source/out/arch/arm64/boot/Image AnyKernel3/
-          fi
+          # 寻找编译出的镜像文件
+          [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ] && cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+          [ -f kernel-source/out/arch/arm64/boot/Image.gz ] && cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/
           
           cd AnyKernel3
           sed -i 's/device.name1=maguro/device.name1=perseus/' anykernel.sh
           sed -i 's/device.name2=toro/device.name2=mix3/' anykernel.sh
-          zip -r ../Mix3-Kernel.zip *
+          zip -r ../Mix3-Kernel-Flashable.zip *
 
-      - name: 上传
+      - name: 上传产出物
         uses: actions/upload-artifact@v4
         with:
-          name: Mix3-L21-Kernel
-          path: Mix3-Kernel.zip
+          name: Mix3-Kernel-Result
+          path: Mix3-Kernel-Flashable.zip
