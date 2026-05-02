@@ -2,7 +2,7 @@ name: build_Mix3_kernel
 
 on:
   push:
-    branches: [ "main" ] # 确认您的分支名，如果是 lineage-21 请对应修改
+    branches: [ "main" ] # 如果您的分支名是 lineage-21，请对应修改
     paths-ignore:
       - 'README.md'
   workflow_dispatch:
@@ -44,7 +44,7 @@ jobs:
           echo "GCC64_PATH=$(pwd)/toolchain/gcc64/bin" >> $GITHUB_ENV
           echo "GCC32_PATH=$(pwd)/toolchain/gcc32/bin" >> $GITHUB_ENV
 
-      - name: 4. 执行核心编译 (目录挂载暴力修复版)
+      - name: 4. 执行核心编译 (消除重复定义冲突版)
         run: |
           # 注入工具链
           export PATH=$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH
@@ -58,14 +58,17 @@ jobs:
           
           cd kernel-source
           
-          # 【终极暴力补丁】：解决 Techpack 不编译导致的 undefined symbol
-          # 1. 将 techpack/audio 软链接到 drivers/soc/techpack，强制让内核感知它
-          mkdir -p drivers/soc
+          # 【核心修复】：解决 Techpack 重复定义
+          # 1. 干净地挂载 Techpack 到 staging 目录
+          mkdir -p drivers/staging
           if [ -d "techpack/audio" ]; then
-             ln -s $(pwd)/techpack/audio drivers/soc/techpack
-             # 2. 在 drivers/soc 的 Makefile 中强制加入编译入口
-             echo 'obj-y += techpack/' >> drivers/soc/Makefile
-             echo "✅ 已强行将 Techpack 挂载至驱动编译树"
+             rm -rf drivers/staging/techpack_audio
+             ln -s $(pwd)/techpack/audio drivers/staging/techpack_audio
+             
+             # 在 staging 的 Makefile 中注入一次
+             sed -i '/techpack_audio/d' drivers/staging/Makefile
+             echo 'obj-y += techpack_audio/' >> drivers/staging/Makefile
+             echo "✅ 已干净地将 Techpack 挂载至驱动树"
           fi
 
           mkdir -p out
@@ -78,21 +81,20 @@ jobs:
             scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           fi
 
-          # C. 修改配置，关闭 EFI 并强制开启缺失宏
+          # C. 【关键】：彻底关闭原生开关，只保留我们 staging 里的手动挂载
           sed -i 's/CONFIG_EFI=y/CONFIG_EFI=n/g' out/.config
           cat <<EOF >> out/.config
           CONFIG_SND_SOC_SDM845=y
           CONFIG_SND_SOC_PERSEUS=y
           CONFIG_SND_SOC_ELLIPTIC=y
-          CONFIG_AUDIO_TECHPACK=y
-          CONFIG_TECHPACK_AUDIO=y
+          CONFIG_AUDIO_TECHPACK=n
+          CONFIG_TECHPACK_AUDIO=n
           EOF
           
           # D. 刷新配置
           make O=out ARCH=arm64 CC=clang olddefconfig
 
-          # E. 全量编译
-          # 使用经典 GCC 链接器以避开链接深度坑
+          # E. 全量编译 (不再传递 TECHPACK_AUDIO=y 防止冲突)
           make -j$(nproc --all) O=out \
                         ARCH=arm64 \
                         CC=clang \
@@ -105,13 +107,13 @@ jobs:
                         OBJCOPY=llvm-objcopy \
                         OBJDUMP=llvm-objdump \
                         STRIP=llvm-strip \
-                        TECHPACK_AUDIO=y
+                        V=0
 
       - name: 5. 打包 AnyKernel3
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
           
-          # 检查编译产物
+          # 寻找编译产物
           if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
             cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
           elif [ -f kernel-source/out/arch/arm64/boot/Image.gz ]; then
@@ -126,10 +128,10 @@ jobs:
           sed -i 's/device.name1=maguro/device.name1=perseus/' anykernel.sh
           sed -i 's/device.name2=toroplus/device.name2=mix3/' anykernel.sh
           
-          zip -r ../Mix3-Kernel-Fix.zip *
+          zip -r ../Mix3-Kernel-Final-Result.zip *
 
       - name: 6. 上传产物
         uses: actions/upload-artifact@v4
         with:
           name: Mix3-Kernel-Package
-          path: Mix3-Kernel-Fix.zip
+          path: Mix3-Kernel-Final-Result.zip
