@@ -18,7 +18,7 @@ jobs:
             git git-lfs gnupg gperf imagemagick protobuf-compiler python3-protobuf \
             lib32readline-dev lib32z1-dev libdw-dev libelf-dev libgnutls28-dev \
             lz4 libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush \
-            rsync pool rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
+            rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
             python3 python-is-python3 libtinfo5 libncurses5
 
       - name: 克隆内核源码
@@ -27,7 +27,7 @@ jobs:
 
       - name: 下载工具链 (AOSP 官方全量 Git 克隆)
         run: |
-          # 直接克隆官方 Clang 仓库
+          # 克隆官方 Clang 仓库
           git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 --depth=1 -b main clang
           
           # 克隆 GCC 4.9
@@ -38,7 +38,7 @@ jobs:
         run: |
           cd kernel-source
           
-          # 动态寻找 clang 可执行文件所在的目录，确保路径 100% 正确
+          # 动态寻找 clang 可执行文件所在的目录
           CLANG_BIN=$(find $GITHUB_WORKSPACE/clang -name "clang" -type f | xargs dirname | head -n 1)
           echo "Found Clang at: $CLANG_BIN"
           
@@ -48,7 +48,6 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           
-          # 准备输出目录
           mkdir -p out
           
           # 1. 生成基础配置
@@ -73,7 +72,6 @@ jobs:
       - name: 打包 AnyKernel3 (生成直刷包)
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
-          # 智能识别生成的镜像文件（可能是 Image.gz-dtb 或 Image.gz）
           if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
               cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
           elif [ -f kernel-source/out/arch/arm64/boot/Image.gz ]; then
@@ -83,7 +81,6 @@ jobs:
           fi
           
           cd AnyKernel3
-          # 设置刷机包识别的机型
           sed -i 's/device.name1=maguro/device.name1=perseus/' anykernel.sh
           sed -i 's/device.name2=toro/device.name2=mix3/' anykernel.sh
           zip -r ../Mix3-L21-Kernel-Flashable.zip *
