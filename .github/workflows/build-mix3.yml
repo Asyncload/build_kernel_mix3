@@ -33,17 +33,17 @@ jobs:
             clang
             gcc64
             gcc32
-          key: toolchain-sdm845-clang12-v1
+          key: toolchain-sdm845-clang14-v1
 
-      - name: 下载工具链 (锁定 Clang 12 黄金版本)
+      - name: 下载工具链 (锁定 Clang 14 官方分支)
         if: steps.cache-toolchain.outputs.cache-hit != 'true'
         run: |
-          # 锁定 AOSP 官方 Clang 12 (r416183b)
-          git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 --depth=1 -b busytown-clang-r416183b clang
+          # 使用官方明确存在的 Clang 14 (r450784d) 对应分支
+          git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 --depth=1 -b clang-r450784d clang
           git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 --depth=1 gcc64
           git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 --depth=1 gcc32
 
-      - name: 执行核心编译 (Clang 12 适配版)
+      - name: 执行核心编译 (Clang 14 适配版)
         run: |
           cd kernel-source
           
@@ -51,6 +51,8 @@ jobs:
           CLANG_BIN=$(find $GITHUB_WORKSPACE/clang -name "clang" -type f | xargs dirname | grep "bin" | head -n 1)
           GCC64_BIN=$GITHUB_WORKSPACE/gcc64/bin
           GCC32_BIN=$GITHUB_WORKSPACE/gcc32/bin
+          
+          echo "Using Clang from: $CLANG_BIN"
           
           # 2. 环境变量强制注入
           export PATH=$CLANG_BIN:$GCC64_BIN:$GCC32_BIN:$PATH
@@ -64,7 +66,7 @@ jobs:
           
           mkdir -p out
           
-          # 3. 生成配置 (锁定 CC=clang 绕过检查)
+          # 3. 生成配置
           make O=out ARCH=arm64 CC=clang sdm845_defconfig
           
           # 4. 合并小米 Mix 3 专用配置
@@ -72,14 +74,10 @@ jobs:
             ARCH=arm64 CC=clang scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           fi
           
-          # 5. 【暴力防雷】在 Clang 12 下直接写死堆栈保护配置，防止 Makefile 逻辑抽风
-          echo "CONFIG_CC_STACKPROTECTOR_STRONG=y" >> out/.config
-          
-          # 6. 同步配置 (使用 olddefconfig 自动补全)
+          # 5. 同步配置 (自动处理配置缺口)
           make O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- olddefconfig
 
-          # 7. 全量编译 (Clang 12 环境)
-          # 注意：LD=ld.lld 在 Clang 12 中非常稳定
+          # 6. 正式全量编译 (锁定 LLVM 连接器以避开检查报错)
           make -j$(nproc --all) O=out \
                         ARCH=arm64 \
                         CC=clang \
@@ -96,16 +94,14 @@ jobs:
       - name: 打包直刷包
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
-          # 智能匹配生成的镜像文件
           [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ] && cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
           [ -f kernel-source/out/arch/arm64/boot/Image.gz ] && cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/
-          
           cd AnyKernel3
           sed -i 's/device.name1=maguro/device.name1=perseus/' anykernel.sh
           zip -r ../Mix3-L21-Kernel.zip *
 
-      - name: 上传产出物
+      - name: 上传
         uses: actions/upload-artifact@v4
         with:
-          name: Mix3-Kernel-Clang12
+          name: Mix3-Kernel-Clang14
           path: Mix3-L21-Kernel.zip
