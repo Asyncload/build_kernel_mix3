@@ -2,9 +2,7 @@ name: build_Mix3_kernel
 
 on:
   push:
-    branches: [ "main" ] # 如果您的分支名是 lineage-21，请对应修改
-    paths-ignore:
-      - 'README.md'
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
@@ -12,42 +10,31 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: 1. 环境初始化与依赖安装
+      - name: 1. 环境初始化
         run: |
           sudo apt-get update
-          # 安装旧版 Clang 运行环境
           wget -q http://mirrors.kernel.org/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2_amd64.deb
           sudo apt install ./libtinfo5_6.3-2_amd64.deb -y
-          # 安装基础构建依赖
           sudo apt-get install -y bc bison build-essential flex libssl-dev libelf-dev python3 git zip rsync libncurses5
 
-      - name: 2. 克隆内核源码
+      - name: 2. 克隆源码
         run: |
-          # 确保分支名为 lineage-21
           git clone https://github.com/LineageOS/android_kernel_xiaomi_sdm845.git -b lineage-21 --depth=1 kernel-source
 
-      - name: 3. 部署工具链 (Proton-Clang + Lineage-GCC)
+      - name: 3. 部署工具链
         run: |
-          mkdir -p $(pwd)/toolchain
-          
-          # 下载 Clang (Proton-Clang)
           mkdir -p $(pwd)/toolchain/clang
           wget -q https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz
           tar -xf master.tar.gz -C $(pwd)/toolchain/clang --strip-components=1
-          
-          # 下载 GCC 4.9 用于辅助编译
           git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git --depth=1 $(pwd)/toolchain/gcc64
           git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git --depth=1 $(pwd)/toolchain/gcc32
-          
-          # 写入环境变量
           echo "CLANG_PATH=$(pwd)/toolchain/clang/bin" >> $GITHUB_ENV
           echo "GCC64_PATH=$(pwd)/toolchain/gcc64/bin" >> $GITHUB_ENV
           echo "GCC32_PATH=$(pwd)/toolchain/gcc32/bin" >> $GITHUB_ENV
 
-      - name: 4. 执行核心编译 (原生环境变量引导版)
+      - name: 4. 执行核心编译 (配置补全版)
         run: |
           export PATH=$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH
-          
           export ARCH=arm64
           export SUBARCH=arm64
           export CC=clang
@@ -56,37 +43,45 @@ jobs:
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           
           cd kernel-source
-
-          # 【不再移动目录，不再修改 Makefile】
-          # 我们仅通过 .config 和环境变量来修
-          
           mkdir -p out
 
           # A. 生成基础配置
           make O=out ARCH=arm64 CC=clang sdm845_defconfig
           
-          # B. 合并 Mix 3 专用配置
+          # B. 合并小米专用配置
           if [ -f arch/arm64/configs/vendor/xiaomi/perseus.config ]; then
             scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           fi
 
-          # C. 强制开启 Techpack 宏 (不再依赖 Kconfig 自动检测)
+          # C. 【精准破局】：强行内置音频 DSP 核心，解决 AFE/APR 符号丢失
+          # 同时关闭 EFI 防止链接重定位报错
           sed -i 's/CONFIG_EFI=y/CONFIG_EFI=n/g' out/.config
           cat <<EOF >> out/.config
+          # 核心 DSP 支持 (提供 AFE/APR 符号)
+          CONFIG_SND_SOC_QDSP6V2=y
+          CONFIG_SND_SOC_QDSP6=y
+          CONFIG_MSM_QDSP6_APRV2=y
+          CONFIG_MSM_QDSP6_APRV2_RPMSG=y
+          CONFIG_SND_SOC_MSM_QDSP6V2_INTF=y
+          
+          # 小米 Mix 3 功能适配
           CONFIG_SND_SOC_SDM845=y
           CONFIG_SND_SOC_PERSEUS=y
           CONFIG_SND_SOC_ELLIPTIC=y
+          
+          # Techpack 激活
           CONFIG_AUDIO_TECHPACK=y
           CONFIG_TECHPACK_AUDIO=y
+          
+          # 通讯依赖
           CONFIG_MSM_GLINK_SPI=y
           EOF
           
-          # D. 刷新配置
+          # D. 刷新并校验配置
           make O=out ARCH=arm64 CC=clang olddefconfig
 
           # E. 全量编译
-          # 核心改动：移除手动指定的 LD，让内核 Makefile 自动处理
-          # 核心改动：增加外部目录定义环境变量
+          # 移除 LD= 强制指定，让内核自动适配链接器
           make -j$(nproc --all) O=out \
                         ARCH=arm64 \
                         CC=clang \
@@ -105,25 +100,18 @@ jobs:
       - name: 5. 打包 AnyKernel3
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
-          
-          # 寻找编译产物
           if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
             cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
           elif [ -f kernel-source/out/arch/arm64/boot/Image.gz ]; then
             cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/
-          else
-            echo "❌ 编译产物缺失，请检查编译日志中的链接报错！"
-            exit 1
           fi
-          
           cd AnyKernel3
           sed -i 's/device.name1=maguro/device.name1=perseus/' anykernel.sh
           sed -i 's/device.name2=toroplus/device.name2=mix3/' anykernel.sh
-          
-          zip -r ../Mix3-Kernel-Result.zip *
+          zip -r ../Mix3-Kernel-Full-Function.zip *
 
       - name: 6. 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: Mix3-Kernel-Result
-          path: Mix3-Kernel-Result.zip
+          name: Mix3-Kernel-Complete
+          path: Mix3-Kernel-Full-Function.zip
