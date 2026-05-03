@@ -2,7 +2,7 @@ name: build_Mix3_kernel
 
 on:
   push:
-    branches: [ "main" ] # 如果您的分支名是 lineage-21，请改为 lineage-21
+    branches: [ "main" ] # 如果您的分支名是 lineage-21，请对应修改
     paths-ignore:
       - 'README.md'
   workflow_dispatch:
@@ -43,7 +43,7 @@ jobs:
           echo "GCC64_PATH=$(pwd)/toolchain/gcc64/bin" >> $GITHUB_ENV
           echo "GCC32_PATH=$(pwd)/toolchain/gcc32/bin" >> $GITHUB_ENV
 
-      - name: 4. 执行核心编译 (物理迁移与 Kconfig 修复版)
+      - name: 4. 执行核心编译 (全局路径抹除修复版)
         run: |
           export PATH=$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH
           
@@ -56,30 +56,33 @@ jobs:
           
           cd kernel-source
           
-          # 【核心修复】：物理移动驱动文件夹并清理配置文件引用
+          # 【核心修复】：彻底抹除原生 techpack 引用，防止编译清单报错
           if [ -d "techpack/audio" ]; then
-             echo "📦 执行目录迁移与 Kconfig 路径清理..."
+             echo "📦 执行全局路径重构与隔离..."
              mkdir -p drivers/staging
              
-             # 1. 直接迁移目录
+             # 1. 物理迁移驱动目录到安全位置
              mv techpack/audio drivers/staging/techpack_audio
              
-             # 2. 注入 Staging 编译入口
+             # 2. 注入新的编译入口到 Staging
              sed -i '/techpack_audio/d' drivers/staging/Makefile
              echo 'obj-y += techpack_audio/' >> drivers/staging/Makefile
              
-             # 3. 【关键】：清空 techpack/Kconfig，防止其在配置阶段寻找已迁移的目录
-             if [ -f "techpack/Kconfig" ]; then
-                echo "# Kconfig cleaned by Dola Build Script" > techpack/Kconfig
-             fi
+             # 3. 【关键修复】：彻底销毁 techpack 目录下的原有管理文件，并替换为空桩
+             # 这能防止 scripts/Makefile.modbuiltin 因找不到文件而报错
+             rm -f techpack/Kconfig techpack/Makefile
+             echo "obj-y :=" > techpack/Makefile
+             echo "# Empty Kconfig" > techpack/Kconfig
              
-             # 4. 屏蔽主 Makefile 可能存在的硬编码包含
-             sed -i 's/obj-y += techpack\/audio\///g' Makefile 2>/dev/null || true
+             # 4. 从顶层 Makefile 中删除所有对 techpack 的直接引用
+             sed -i '/techpack/d' Makefile
+             
+             echo "✅ 原生 techpack 依赖已彻底清除"
           fi
 
           mkdir -p out
 
-          # A. 生成基础配置 (此时不再会因找不到路径而报错)
+          # A. 生成基础配置
           make O=out ARCH=arm64 CC=clang sdm845_defconfig
           
           # B. 合并 Mix 3 专用配置 (perseus)
@@ -87,7 +90,7 @@ jobs:
             scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           fi
 
-          # C. 注入兼容性宏并关闭 EFI
+          # C. 环境清理与宏注入
           sed -i 's/CONFIG_EFI=y/CONFIG_EFI=n/g' out/.config
           cat <<EOF >> out/.config
           CONFIG_SND_SOC_SDM845=y
