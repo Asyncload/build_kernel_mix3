@@ -44,20 +44,25 @@ jobs:
             scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           fi
 
-          # 1. 基础功能修复
+          # 1. 驱动冲突物理屏蔽
           sed -i 's/.*ion_import_dma_buf_fd.*/0));/' drivers/char/adsprpc.c
           sed -i 's/.*ion_free(fl->apps->client, map->handle).*/0;/' drivers/char/adsprpc.c
-          sed -i 's/^int msm_do_bam_disable_enable/static inline int msm_do_bam_disable_enable/g' include/linux/usb_bam.h
-          sed -i 's/msm_do_bam_disable_enable/msm_do_bam_disable_enable_unused/g' include/linux/usb/msm_hsusb.h
+          
+          # 2. USB 重定义终极修复 (重命名法)
+          sed -i 's/int msm_do_bam_disable_enable/static inline int msm_do_bam_disable_enable_old/g' include/linux/usb_bam.h
+          sed -i 's/int usb_bam_alloc_fifos/static inline int usb_bam_alloc_fifos_old/g' include/linux/usb_bam.h
+          sed -i 's/int usb_bam_free_fifos/static inline int usb_bam_free_fifos_old/g' include/linux/usb_bam.h
+          sed -i 's/int msm_do_bam_disable_enable/static inline int msm_do_bam_disable_enable_hsusb/g' include/linux/usb/msm_hsusb.h
+          
           find drivers/staging/android/ion/ -name "*.h" -exec sed -i 's/^int msm_ion_do_cache_offset_op/static inline int msm_ion_do_cache_offset_op/g' {} +
 
-          # 2. 物理屏蔽 subsystem 依赖 (防止 undefined reference)
+          # 3. 全局屏蔽 subsystem 符号依赖 (解决 undefined reference)
           find . -name "*.c" -exec sed -i 's/subsystem_get(/0; \/\/ /g' {} +
           find . -name "*.c" -exec sed -i 's/subsystem_put(/0; \/\/ /g' {} +
           find . -name "*.c" -exec sed -i 's/subsystem_notifier_register(/0; \/\/ /g' {} +
           find . -name "*.c" -exec sed -i 's/subsystem_notifier_unregister(/0; \/\/ /g' {} +
 
-          # 3. 补全底层配置
+          # 4. 补全底层与安全配置
           {
             echo "CONFIG_MSM_SUBSYSTEM_RESTART=y"
             echo "CONFIG_MSM_PIL=y"
@@ -74,10 +79,11 @@ jobs:
             echo "CONFIG_EFI=n"
           } >> out/.config
 
+          # 强制内置模块
           sed -i 's/=m/=y/g' out/.config
           yes "" | make O=out ARCH=arm64 CC=clang olddefconfig
 
-          # 4. 执行编译
+          # 5. 全量编译
           make -j$(nproc) O=out \
                         ARCH=arm64 \
                         CC=clang \
@@ -91,7 +97,13 @@ jobs:
       - name: 5. 打包 AnyKernel3
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
-          [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ] && cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/ || cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/
+          if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
+            cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+          elif [ -f kernel-source/out/arch/arm64/boot/Image.gz ]; then
+            cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/
+          elif [ -f kernel-source/out/arch/arm64/boot/Image ]; then
+            cp kernel-source/out/arch/arm64/boot/Image AnyKernel3/
+          fi
           cd AnyKernel3
           sed -i 's/device.name1=maguro/device.name1=perseus/' anykernel.sh
           sed -i 's/device.name2=toroplus/device.name2=mix3/' anykernel.sh
@@ -100,5 +112,5 @@ jobs:
       - name: 6. 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: Mix3-Kernel-Final
+          name: Mix3-Kernel-Result
           path: Mix3-Kernel-Final-Result.zip
