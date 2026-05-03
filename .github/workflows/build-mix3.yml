@@ -32,12 +32,12 @@ jobs:
           echo "GCC64_PATH=$(pwd)/toolchain/gcc64/bin" >> $GITHUB_ENV
           echo "GCC32_PATH=$(pwd)/toolchain/gcc32/bin" >> $GITHUB_ENV
 
-      - name: 4. 执行核心编译 (USB 冲突彻底修复版)
+      - name: 4. 执行核心编译 (ION 与 USB 链接修复版)
         run: |
           cd kernel-source
           export PATH=$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH
           
-          # A. 初始化
+          # A. 目录与配置初始化
           rm -rf out && mkdir -p out
           make O=out ARCH=arm64 CC=clang sdm845_defconfig
           
@@ -49,24 +49,25 @@ jobs:
           sed -i 's/.*ion_import_dma_buf_fd.*/0));/' drivers/char/adsprpc.c
           sed -i 's/.*ion_free(fl->apps->client, map->handle).*/0;/' drivers/char/adsprpc.c
           
-          # C. 【修复 2】：屏蔽 IOMMU 调试 (解决 mapping 报错)
+          # C. 【修复 2】：屏蔽 IOMMU 调试干扰
           echo "CONFIG_IOMMU_DEBUG=n" >> out/.config
           echo "CONFIG_IOMMU_TESTS=n" >> out/.config
 
-          # D. 【修复 3】：彻底解决 USB 重定义 (重命名法)
-          # 1. 先将 usb_bam.h 里的函数 static inline 化，解决多文件链接冲突
+          # D. 【修复 3】：USB 链接冲突彻底修复 (重命名法)
           sed -i 's/^int msm_do_bam_disable_enable/static inline int msm_do_bam_disable_enable/g' include/linux/usb_bam.h
           sed -i 's/^int usb_bam_alloc_fifos/static inline int usb_bam_alloc_fifos/g' include/linux/usb_bam.h
           sed -i 's/^int usb_bam_free_fifos/static inline int usb_bam_free_fifos/g' include/linux/usb_bam.h
-          
-          # 2. 关键：将 msm_hsusb.h 里的同名函数改名，防止在 composite.c 中由于双重包含导致重定义报错
           sed -i 's/msm_do_bam_disable_enable/msm_do_bam_disable_enable_unused/g' include/linux/usb/msm_hsusb.h
 
-          # E. 【修复 4】：WLAN 驱动容错
+          # E. 【修复 4 - 重点】：修复 ION 缓存操作函数的重复定义
+          # 解决 drivers/built-in.o 链接时多处定义 msm_ion_do_cache_offset_op 的错误
+          find drivers/staging/android/ion/ -name "*.h" | xargs sed -i 's/^int msm_ion_do_cache_offset_op/static inline int msm_ion_do_cache_offset_op/g' || true
+
+          # F. 【预判修复】：WLAN 驱动容错
           [ -d drivers/staging/qcacld-3.0 ] && find drivers/staging/qcacld-3.0 -name "Makefile*" -o -name "*.c" | xargs sed -i 's/-Werror//g' || true
           [ -d drivers/net/wireless/qcacld-3.0 ] && find drivers/net/wireless/qcacld-3.0 -name "Makefile*" -o -name "*.c" | xargs sed -i 's/-Werror//g' || true
 
-          # F. 【音频修复】：强制内置与路径注入
+          # G. 【音频修复】：强制内置与路径重定向
           sed -i 's/=m/=y/g' out/.config
           echo "CONFIG_EFI=n" >> out/.config
           echo "CONFIG_MSM_APR=y" >> out/.config
@@ -74,7 +75,7 @@ jobs:
           
           yes "" | make O=out ARCH=arm64 CC=clang olddefconfig
 
-          # G. 全量编译
+          # H. 全量编译
           make -j$(nproc) O=out \
                         ARCH=arm64 \
                         CC=clang \
