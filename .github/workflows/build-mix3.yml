@@ -32,7 +32,7 @@ jobs:
           echo "GCC64_PATH=$(pwd)/toolchain/gcc64/bin" >> $GITHUB_ENV
           echo "GCC32_PATH=$(pwd)/toolchain/gcc32/bin" >> $GITHUB_ENV
 
-      - name: 4. 执行核心编译 (全线突围版)
+      - name: 4. 执行核心编译 (排除 IOMMU 干扰终极版)
         run: |
           cd kernel-source
           export PATH=$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH
@@ -45,16 +45,20 @@ jobs:
             scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           fi
 
-          # B. 【核心补丁 1】：物理级屏蔽 adsprpc 接口报错 (ION 函数断层)
-          # 精准替换报错行为安全值，防止语法报错
+          # B. 【核心修复 1】：屏蔽 adsprpc 接口报错 (ION 函数断层)
           sed -i 's/.*ion_import_dma_buf_fd.*/0));/' drivers/char/adsprpc.c
           sed -i 's/.*ion_free(fl->apps->client, map->handle).*/0;/' drivers/char/adsprpc.c
           
-          # C. 【核心补丁 2】：预判屏蔽 WLAN 驱动常出的 -Werror 报错
+          # C. 【核心修复 2】：物理屏蔽 IOMMU 调试 (解决 mapping 报错)
+          # 强制关闭导致 18 个错误的 IOMMU 调试功能
+          echo "CONFIG_IOMMU_DEBUG=n" >> out/.config
+          echo "CONFIG_IOMMU_TESTS=n" >> out/.config
+
+          # D. 【预判修复】：屏蔽 WLAN 驱动常出的 -Werror 报错
           [ -d drivers/staging/qcacld-3.0 ] && find drivers/staging/qcacld-3.0 -name "Makefile*" -o -name "*.c" | xargs sed -i 's/-Werror//g' || true
           [ -d drivers/net/wireless/qcacld-3.0 ] && find drivers/net/wireless/qcacld-3.0 -name "Makefile*" -o -name "*.c" | xargs sed -i 's/-Werror//g' || true
 
-          # D. 【音频补丁】：强制锁定底层驱动内置，开启 SLIMBUS/APR 总线
+          # E. 【音频/总线修复】：强制锁定底层驱动内置，开启总线
           sed -i 's/=m/=y/g' out/.config
           echo "CONFIG_EFI=n" >> out/.config
           echo "CONFIG_MSM_APR=y" >> out/.config
@@ -63,8 +67,8 @@ jobs:
           # 刷新配置并自动处理依赖
           yes "" | make O=out ARCH=arm64 CC=clang olddefconfig
 
-          # E. 全量编译：注入最强容错 KCFLAGS
-          # -Wno-error 确保警告不会导致编译中断
+          # F. 全量编译：注入最强容错 KCFLAGS
+          # 同时在命令行指定 CONFIG_IOMMU_DEBUG=n 确保最高优先级
           make -j$(nproc) O=out \
                         ARCH=arm64 \
                         CC=clang \
@@ -79,6 +83,7 @@ jobs:
                         CONFIG_MSM_APR=y \
                         CONFIG_MSM_QDSP6_APRV2=y \
                         CONFIG_SND_SOC_QDSP6V2=y \
+                        CONFIG_IOMMU_DEBUG=n \
                         TECHPACK_AUDIO=y \
                         KCFLAGS="-I$(pwd)/drivers/soc/qcom -I$(pwd)/drivers/soc/qcom/qdsp6v2 -DCONFIG_MSM_APR=1 -DCONFIG_MSM_QDSP6_APRV2=1 -Wno-error -Wno-implicit-function-declaration -Wno-int-conversion -Wno-incompatible-pointer-types -Wno-format -Wno-unused-result" \
                         USER_EXT_CONFIG=techpack/audio/config/sdm845.conf
@@ -100,5 +105,5 @@ jobs:
       - name: 6. 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: Mix3-Kernel-Artifact
+          name: Mix3-Kernel-Result
           path: Mix3-Kernel-Final-Result.zip
