@@ -32,7 +32,7 @@ jobs:
           echo "GCC64_PATH=$(pwd)/toolchain/gcc64/bin" >> $GITHUB_ENV
           echo "GCC32_PATH=$(pwd)/toolchain/gcc32/bin" >> $GITHUB_ENV
 
-      - name: 4. 执行核心编译 (配置补全版)
+      - name: 4. 执行核心编译 (强制总线开启版)
         run: |
           export PATH=$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH
           export ARCH=arm64
@@ -53,35 +53,42 @@ jobs:
             scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           fi
 
-          # C. 【精准破局】：强行内置音频 DSP 核心，解决 AFE/APR 符号丢失
-          # 同时关闭 EFI 防止链接重定位报错
+          # C. 【全火力补丁】：强行打通音频所有底层总线
           sed -i 's/CONFIG_EFI=y/CONFIG_EFI=n/g' out/.config
           cat <<EOF >> out/.config
-          # 核心 DSP 支持 (提供 AFE/APR 符号)
-          CONFIG_SND_SOC_QDSP6V2=y
-          CONFIG_SND_SOC_QDSP6=y
+          # 1. 物理总线层 (SLIMBUS)
+          CONFIG_SLIMBUS=y
+          CONFIG_SLIM_QCOM_CTRL=y
+          CONFIG_SLIM_QCOM_NGD_CTRL=y
+
+          # 2. 通信路由层 (APR/RPMSG)
+          CONFIG_MSM_APR=y
           CONFIG_MSM_QDSP6_APRV2=y
           CONFIG_MSM_QDSP6_APRV2_RPMSG=y
+          CONFIG_RPMSG=y
+          CONFIG_RPMSG_CHAR=y
+          CONFIG_RPMSG_QCOM_GLINK_SMEM=y
+          CONFIG_RPMSG_QCOM_GLINK_NATIVE=y
+          CONFIG_MSM_GLINK=y
+          CONFIG_MSM_GLINK_SPI=y
+
+          # 3. 音频核心层 (QDSP6)
+          CONFIG_SND_SOC_QDSP6V2=y
+          CONFIG_SND_SOC_QDSP6=y
           CONFIG_SND_SOC_MSM_QDSP6V2_INTF=y
           
-          # 小米 Mix 3 功能适配
+          # 4. 小米 Mix 3 专用定义
           CONFIG_SND_SOC_SDM845=y
           CONFIG_SND_SOC_PERSEUS=y
           CONFIG_SND_SOC_ELLIPTIC=y
-          
-          # Techpack 激活
           CONFIG_AUDIO_TECHPACK=y
           CONFIG_TECHPACK_AUDIO=y
-          
-          # 通讯依赖
-          CONFIG_MSM_GLINK_SPI=y
           EOF
           
-          # D. 刷新并校验配置
+          # D. 刷新配置
           make O=out ARCH=arm64 CC=clang olddefconfig
 
-          # E. 全量编译
-          # 移除 LD= 强制指定，让内核自动适配链接器
+          # E. 全量编译 (在命令行中二次注入核心宏，确保优先级最高)
           make -j$(nproc --all) O=out \
                         ARCH=arm64 \
                         CC=clang \
@@ -93,6 +100,10 @@ jobs:
                         OBJCOPY=llvm-objcopy \
                         OBJDUMP=llvm-objdump \
                         STRIP=llvm-strip \
+                        CONFIG_MSM_APR=y \
+                        CONFIG_MSM_QDSP6_APRV2=y \
+                        CONFIG_SND_SOC_QDSP6V2=y \
+                        CONFIG_SLIMBUS=y \
                         TECHPACK_AUDIO=y \
                         USER_EXT_CONFIG=techpack/audio/config/sdm845.conf \
                         V=0
@@ -108,10 +119,10 @@ jobs:
           cd AnyKernel3
           sed -i 's/device.name1=maguro/device.name1=perseus/' anykernel.sh
           sed -i 's/device.name2=toroplus/device.name2=mix3/' anykernel.sh
-          zip -r ../Mix3-Kernel-Full-Function.zip *
+          zip -r ../Mix3-Kernel-Result.zip *
 
       - name: 6. 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: Mix3-Kernel-Complete
-          path: Mix3-Kernel-Full-Function.zip
+          name: Mix3-Kernel-Final
+          path: Mix3-Kernel-Result.zip
