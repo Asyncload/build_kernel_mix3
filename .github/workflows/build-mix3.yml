@@ -32,7 +32,7 @@ jobs:
           echo "GCC64_PATH=$(pwd)/toolchain/gcc64/bin" >> $GITHUB_ENV
           echo "GCC32_PATH=$(pwd)/toolchain/gcc32/bin" >> $GITHUB_ENV
 
-      - name: 4. 执行核心编译 (修复 USB 与 IOMMU 干扰版)
+      - name: 4. 执行核心编译 (修复 USB 链接冲突终极版)
         run: |
           cd kernel-source
           export PATH=$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH
@@ -53,9 +53,12 @@ jobs:
           echo "CONFIG_IOMMU_DEBUG=n" >> out/.config
           echo "CONFIG_IOMMU_TESTS=n" >> out/.config
 
-          # D. 【核心修复 3】：解决 USB 重定义冲突 (msm_do_bam_disable_enable)
-          # 注释掉 msm_hsusb.h 里的重复定义，保留 usb_bam.h 里的
-          sed -i 's/int msm_do_bam_disable_enable(enum usb_ctrl ctrl) { return true; }/\/\/ Redefined/' include/linux/usb/msm_hsusb.h
+          # D. 【核心修复 3】：彻底解决 USB BAM 链接冲突 (Multiple Definition)
+          # 将头文件里冲突的 int 函数强制改为 static inline，防止链接器在多个 .o 中重复计数
+          sed -i 's/^int msm_do_bam_disable_enable/static inline int msm_do_bam_disable_enable/g' include/linux/usb_bam.h
+          sed -i 's/^int usb_bam_alloc_fifos/static inline int usb_bam_alloc_fifos/g' include/linux/usb_bam.h
+          sed -i 's/^int usb_bam_free_fifos/static inline int usb_bam_free_fifos/g' include/linux/usb_bam.h
+          sed -i 's/^int msm_do_bam_disable_enable/static inline int msm_do_bam_disable_enable/g' include/linux/usb/msm_hsusb.h
 
           # E. 【预判修复】：屏蔽 WLAN 驱动常出的 -Werror 报错
           [ -d drivers/staging/qcacld-3.0 ] && find drivers/staging/qcacld-3.0 -name "Makefile*" -o -name "*.c" | xargs sed -i 's/-Werror//g' || true
@@ -106,5 +109,5 @@ jobs:
       - name: 6. 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: Mix3-Kernel-Result
+          name: Mix3-Kernel-Final
           path: Mix3-Kernel-Final-Result.zip
