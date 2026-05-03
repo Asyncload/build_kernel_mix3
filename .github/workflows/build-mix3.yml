@@ -32,7 +32,7 @@ jobs:
           echo "GCC64_PATH=$(pwd)/toolchain/gcc64/bin" >> $GITHUB_ENV
           echo "GCC32_PATH=$(pwd)/toolchain/gcc32/bin" >> $GITHUB_ENV
 
-      - name: 4. 执行核心编译 (排除 IOMMU 干扰终极版)
+      - name: 4. 执行核心编译 (修复 USB 与 IOMMU 干扰版)
         run: |
           cd kernel-source
           export PATH=$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH
@@ -50,15 +50,18 @@ jobs:
           sed -i 's/.*ion_free(fl->apps->client, map->handle).*/0;/' drivers/char/adsprpc.c
           
           # C. 【核心修复 2】：物理屏蔽 IOMMU 调试 (解决 mapping 报错)
-          # 强制关闭导致 18 个错误的 IOMMU 调试功能
           echo "CONFIG_IOMMU_DEBUG=n" >> out/.config
           echo "CONFIG_IOMMU_TESTS=n" >> out/.config
 
-          # D. 【预判修复】：屏蔽 WLAN 驱动常出的 -Werror 报错
+          # D. 【核心修复 3】：解决 USB 重定义冲突 (msm_do_bam_disable_enable)
+          # 注释掉 msm_hsusb.h 里的重复定义，保留 usb_bam.h 里的
+          sed -i 's/int msm_do_bam_disable_enable(enum usb_ctrl ctrl) { return true; }/\/\/ Redefined/' include/linux/usb/msm_hsusb.h
+
+          # E. 【预判修复】：屏蔽 WLAN 驱动常出的 -Werror 报错
           [ -d drivers/staging/qcacld-3.0 ] && find drivers/staging/qcacld-3.0 -name "Makefile*" -o -name "*.c" | xargs sed -i 's/-Werror//g' || true
           [ -d drivers/net/wireless/qcacld-3.0 ] && find drivers/net/wireless/qcacld-3.0 -name "Makefile*" -o -name "*.c" | xargs sed -i 's/-Werror//g' || true
 
-          # E. 【音频/总线修复】：强制锁定底层驱动内置，开启总线
+          # F. 【音频/总线修复】：强制锁定底层驱动内置，开启总线
           sed -i 's/=m/=y/g' out/.config
           echo "CONFIG_EFI=n" >> out/.config
           echo "CONFIG_MSM_APR=y" >> out/.config
@@ -67,8 +70,7 @@ jobs:
           # 刷新配置并自动处理依赖
           yes "" | make O=out ARCH=arm64 CC=clang olddefconfig
 
-          # F. 全量编译：注入最强容错 KCFLAGS
-          # 同时在命令行指定 CONFIG_IOMMU_DEBUG=n 确保最高优先级
+          # G. 全量编译：注入最强容错 KCFLAGS
           make -j$(nproc) O=out \
                         ARCH=arm64 \
                         CC=clang \
@@ -91,7 +93,6 @@ jobs:
       - name: 5. 打包 AnyKernel3
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
-          # 从 out 目录提取编译生成的内核镜像
           if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
             cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
           elif [ -f kernel-source/out/arch/arm64/boot/Image.gz ]; then
