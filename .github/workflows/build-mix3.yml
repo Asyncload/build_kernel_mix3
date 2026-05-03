@@ -32,12 +32,12 @@ jobs:
           echo "GCC64_PATH=$(pwd)/toolchain/gcc64/bin" >> $GITHUB_ENV
           echo "GCC32_PATH=$(pwd)/toolchain/gcc32/bin" >> $GITHUB_ENV
 
-      - name: 4. 执行核心编译 (ION 与 USB 链接修复版)
+      - name: 4. 执行核心编译 (符号链接终极修复版)
         run: |
           cd kernel-source
           export PATH=$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH
           
-          # A. 目录与配置初始化
+          # A. 初始化配置
           rm -rf out && mkdir -p out
           make O=out ARCH=arm64 CC=clang sdm845_defconfig
           
@@ -45,37 +45,49 @@ jobs:
             scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           fi
 
-          # B. 【修复 1】：屏蔽 adsprpc (ION 冲突)
+          # B. 【代码层补丁】
+          # 修复 adsprpc 与 ION
           sed -i 's/.*ion_import_dma_buf_fd.*/0));/' drivers/char/adsprpc.c
           sed -i 's/.*ion_free(fl->apps->client, map->handle).*/0;/' drivers/char/adsprpc.c
-          
-          # C. 【修复 2】：屏蔽 IOMMU 调试干扰
-          echo "CONFIG_IOMMU_DEBUG=n" >> out/.config
-          echo "CONFIG_IOMMU_TESTS=n" >> out/.config
-
-          # D. 【修复 3】：USB 链接冲突彻底修复 (重命名法)
+          # 修复 USB 重定义冲突
           sed -i 's/^int msm_do_bam_disable_enable/static inline int msm_do_bam_disable_enable/g' include/linux/usb_bam.h
           sed -i 's/^int usb_bam_alloc_fifos/static inline int usb_bam_alloc_fifos/g' include/linux/usb_bam.h
           sed -i 's/^int usb_bam_free_fifos/static inline int usb_bam_free_fifos/g' include/linux/usb_bam.h
           sed -i 's/msm_do_bam_disable_enable/msm_do_bam_disable_enable_unused/g' include/linux/usb/msm_hsusb.h
-
-          # E. 【修复 4 - 重点】：修复 ION 缓存操作函数的重复定义
-          # 解决 drivers/built-in.o 链接时多处定义 msm_ion_do_cache_offset_op 的错误
+          # 修复 ION 链接重复
           find drivers/staging/android/ion/ -name "*.h" | xargs sed -i 's/^int msm_ion_do_cache_offset_op/static inline int msm_ion_do_cache_offset_op/g' || true
 
-          # F. 【预判修复】：WLAN 驱动容错
-          [ -d drivers/staging/qcacld-3.0 ] && find drivers/staging/qcacld-3.0 -name "Makefile*" -o -name "*.c" | xargs sed -i 's/-Werror//g' || true
-          [ -d drivers/net/wireless/qcacld-3.0 ] && find drivers/net/wireless/qcacld-3.0 -name "Makefile*" -o -name "*.c" | xargs sed -i 's/-Werror//g' || true
+          # C. 【配置层补丁 - 解决 Undefined Reference 关键】
+          {
+            # 1. 补全子系统管理器 (解决 subsystem_get/put)
+            echo "CONFIG_MSM_SUBSYSTEM_RESTART=y"
+            echo "CONFIG_MSM_PIL=y"
+            # 2. 补全底层通信 (解决 scm_call2/cmd_db)
+            echo "CONFIG_QCOM_SCM=y"
+            echo "CONFIG_QCOM_COMMAND_DB=y"
+            echo "CONFIG_QCOM_RPMH=y"
+            # 3. 补齐音频底层总线 (解决 afe_/voc_ 报错)
+            echo "CONFIG_SND_SOC_QDSP6V2=y"
+            echo "CONFIG_MSM_QDSP6_APRV2=y"
+            echo "CONFIG_MSM_QDSP6_SSR=y"
+            echo "CONFIG_SND_SOC_MSM_QDSP6V2_INTF=y"
+            # 4. 禁用导致链接失败的第三方插件 (elus_afe/DTMF)
+            echo "CONFIG_SND_SOC_QDSP6V2_ELP=n"
+            echo "CONFIG_SND_SOC_MSM_PCM_DTMF=n"
+            # 5. 安全补丁与调试关闭
+            echo "CONFIG_MITIGATE_SPECTRE_BRANCH_HISTORY=y"
+            echo "CONFIG_IOMMU_DEBUG=n"
+            echo "CONFIG_EFI=n"
+          } >> out/.config
 
-          # G. 【音频修复】：强制内置与路径重定向
+          # 强制将所有模块转为内置，确保链接器能找到符号
           sed -i 's/=m/=y/g' out/.config
-          echo "CONFIG_EFI=n" >> out/.config
-          echo "CONFIG_MSM_APR=y" >> out/.config
-          echo "CONFIG_MSM_QDSP6_APRV2=y" >> out/.config
           
+          # 应用配置
           yes "" | make O=out ARCH=arm64 CC=clang olddefconfig
 
-          # H. 全量编译
+          # D. 全量编译
+          # 额外注入 Techpack 头文件路径以防找不到定义
           make -j$(nproc) O=out \
                         ARCH=arm64 \
                         CC=clang \
@@ -87,13 +99,8 @@ jobs:
                         OBJCOPY=llvm-objcopy \
                         OBJDUMP=llvm-objdump \
                         STRIP=llvm-strip \
-                        CONFIG_MSM_APR=y \
-                        CONFIG_MSM_QDSP6_APRV2=y \
-                        CONFIG_SND_SOC_QDSP6V2=y \
-                        CONFIG_IOMMU_DEBUG=n \
                         TECHPACK_AUDIO=y \
-                        KCFLAGS="-I$(pwd)/drivers/soc/qcom -I$(pwd)/drivers/soc/qcom/qdsp6v2 -DCONFIG_MSM_APR=1 -DCONFIG_MSM_QDSP6_APRV2=1 -Wno-error -Wno-implicit-function-declaration -Wno-int-conversion -Wno-incompatible-pointer-types -Wno-format -Wno-unused-result" \
-                        USER_EXT_CONFIG=techpack/audio/config/sdm845.conf
+                        KCFLAGS="-Wno-error -Wno-implicit-function-declaration -Wno-int-conversion -Wno-incompatible-pointer-types -I$(pwd)/techpack/audio/include -I$(pwd)/drivers/soc/qcom"
 
       - name: 5. 打包 AnyKernel3
         run: |
@@ -111,5 +118,5 @@ jobs:
       - name: 6. 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: Mix3-Kernel-Result
+          name: Mix3-Kernel-Final-Build
           path: Mix3-Kernel-Final-Result.zip
