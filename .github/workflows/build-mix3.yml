@@ -32,7 +32,7 @@ jobs:
           echo "GCC64_PATH=$(pwd)/toolchain/gcc64/bin" >> $GITHUB_ENV
           echo "GCC32_PATH=$(pwd)/toolchain/gcc32/bin" >> $GITHUB_ENV
 
-      - name: 4. 执行核心编译 (语法安全修复版)
+      - name: 4. 执行核心编译 (宏注入通关版)
         run: |
           cd kernel-source
           export PATH=$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH
@@ -44,7 +44,7 @@ jobs:
             scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           fi
 
-          # B. 基础修复 (ION, USB)
+          # 基础代码定义修复
           sed -i 's/.*ion_import_dma_buf_fd.*/0));/' drivers/char/adsprpc.c
           sed -i 's/.*ion_free(fl->apps->client, map->handle).*/0;/' drivers/char/adsprpc.c
           sed -i 's/int msm_do_bam_disable_enable/static inline int msm_do_bam_disable_enable_old/g' include/linux/usb_bam.h
@@ -53,15 +53,7 @@ jobs:
           sed -i 's/int msm_do_bam_disable_enable/static inline int msm_do_bam_disable_enable_hsusb/g' include/linux/usb/msm_hsusb.h
           find drivers/staging/android/ion/ -name "*.h" -exec sed -i 's/^int msm_ion_do_cache_offset_op/static inline int msm_ion_do_cache_offset_op/g' {} +
 
-          # C. 【语法安全修复】物理屏蔽冲突符号 (使用正则匹配确保 if 语句不崩)
-          find . -name "*.c" -exec sed -i 's/subsystem_get([^)]*)/(0)/g' {} +
-          find . -name "*.c" -exec sed -i 's/subsystem_put([^)]*)/(0)/g' {} +
-          find . -name "*.c" -exec sed -i 's/subsystem_notifier_register([^)]*)/(0)/g' {} +
-          find . -name "*.c" -exec sed -i 's/subsystem_notifier_unregister([^)]*)/(0)/g' {} +
-          find . -name "*.c" -exec sed -i 's/scm_call2([^)]*)/(0)/g' {} +
-          find . -name "*.c" -exec sed -i 's/scm_call2_atomic([^)]*)/(0)/g' {} +
-
-          # D. 配置补全
+          # 配置补全
           {
             echo "CONFIG_MSM_SUBSYSTEM_RESTART=y"
             echo "CONFIG_MSM_PIL=y"
@@ -81,8 +73,8 @@ jobs:
 
           yes "" | make O=out ARCH=arm64 CC=clang olddefconfig
 
-          # E. 执行编译
-          make -j2 O=out \
+          # 编译：注入宏定义
+          make -j1 O=out \
                         ARCH=arm64 \
                         CC=clang \
                         CLANG_TRIPLE=aarch64-linux-gnu- \
@@ -90,11 +82,19 @@ jobs:
                         CROSS_COMPILE_ARM32=arm-linux-androideabi- \
                         AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip \
                         TECHPACK_AUDIO=y \
-                        KCFLAGS="-Wno-error -Wno-implicit-function-declaration -Wno-int-conversion -Wno-incompatible-pointer-types -I$(pwd)/techpack/audio/include -I$(pwd)/drivers/soc/qcom -I$(pwd)/include/uapi/misc"
+                        KCFLAGS="-Wno-error -Wno-implicit-function-declaration -Wno-int-conversion -Wno-incompatible-pointer-types \
+                        -I$(pwd)/techpack/audio/include -I$(pwd)/drivers/soc/qcom -I$(pwd)/include/uapi/misc \
+                        -Dscm_call2(...)=0 \
+                        -Dscm_call2_atomic(...)=0 \
+                        -Dsubsystem_get(...)=0 \
+                        -Dsubsystem_put(...)=0 \
+                        -Dsubsystem_notifier_register(...)=0 \
+                        -Dsubsystem_notifier_unregister(...)=0"
 
       - name: 5. 打包 AnyKernel3
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
+          # 优先抓取压缩过的 dtb 镜像
           if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
             cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
           elif [ -f kernel-source/out/arch/arm64/boot/Image.gz ]; then
@@ -110,5 +110,5 @@ jobs:
       - name: 6. 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: Mix3-Kernel-Result
+          name: Mix3-Kernel-Final
           path: Mix3-Kernel-Result.zip
