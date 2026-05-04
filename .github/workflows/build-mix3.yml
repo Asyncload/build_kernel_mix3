@@ -32,7 +32,7 @@ jobs:
           echo "GCC64_PATH=$(pwd)/toolchain/gcc64/bin" >> $GITHUB_ENV
           echo "GCC32_PATH=$(pwd)/toolchain/gcc32/bin" >> $GITHUB_ENV
 
-      - name: 4. 执行核心编译 (终极稳固版)
+      - name: 4. 执行核心编译 (双保险最终版)
         run: |
           cd kernel-source
           export PATH=$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH
@@ -45,17 +45,16 @@ jobs:
             scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           fi
 
-          # B. 精准修复 ION 和 USB (不再产生新冲突)
+          # B. 基础修复 ION/USB
           sed -i 's/.*ion_import_dma_buf_fd.*/0));/' drivers/char/adsprpc.c
           sed -i 's/.*ion_free(fl->apps->client, map->handle).*/0;/' drivers/char/adsprpc.c
           find drivers/staging/android/ion/ -name "*.h" -exec sed -i 's/^int msm_ion_do_cache_offset_op/static inline int msm_ion_do_cache_offset_op/g' {} +
 
-          # C. 【不再拆补】直接向内核注入缺失的函数实现 (C 语言层修复)
-          # 这种方法不会产生语法错误，因为我们没动头文件
+          # C. 【核心方案】创建空函数实现 + 针对 Techpack 单独补宏
+          # 1. 写入通用空函数 (给内核主体和其他驱动用)
           cat <<EOF > drivers/soc/qcom/stub_fix.c
           #include <linux/types.h>
           #include <linux/export.h>
-          #include <linux/printk.h>
           int scm_call2(u32 cmd, void *p) { return 0; }
           EXPORT_SYMBOL(scm_call2);
           int scm_call2_atomic(u32 cmd, void *p) { return 0; }
@@ -79,8 +78,18 @@ jobs:
           int subsystem_notifier_unregister(void *n, void *nb) { return 0; }
           EXPORT_SYMBOL(subsystem_notifier_unregister);
           EOF
-          # 强行加入编译
           echo "obj-y += stub_fix.o" >> drivers/soc/qcom/Makefile
+
+          # 2. 专门针对 Techpack 音频驱动打补丁
+          if [ -f techpack/audio/include/dsp/apr_audio-v2.h ]; then
+            echo "#define apr_get_q6_state(...) 0" >> techpack/audio/include/dsp/apr_audio-v2.h
+          fi
+          if [ -f techpack/audio/include/dsp/q6afe-v2.h ]; then
+            echo "#define afe_set_routing_callback(...) 0" >> techpack/audio/include/dsp/q6afe-v2.h
+          fi
+          if [ -f techpack/audio/include/asoc/msm-cal-utils.h ]; then
+            echo "#define cal_utils_match_buf_num(...) 0" >> techpack/audio/include/asoc/msm-cal-utils.h
+          fi
 
           # D. 配置补全
           {
