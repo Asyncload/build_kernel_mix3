@@ -32,45 +32,42 @@ jobs:
           echo "GCC64_PATH=$(pwd)/toolchain/gcc64/bin" >> $GITHUB_ENV
           echo "GCC32_PATH=$(pwd)/toolchain/gcc32/bin" >> $GITHUB_ENV
 
-      - name: 4. 执行核心编译 (多助手协作最强版)
+      - name: 4. 执行核心编译 (最终修正版)
         run: |
           cd kernel-source
-          
-          # 环境变量与路径优化
           export PATH=$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH
           export LD_LIBRARY_PATH=$CLANG_PATH/../lib:$LD_LIBRARY_PATH
           export PAHOLE=false
           
-          # A. 初始化配置
+          # A. 配置初始化
           rm -rf out && mkdir -p out
           make O=out ARCH=arm64 CC=clang sdm845_defconfig
-          
           if [ -f arch/arm64/configs/vendor/xiaomi/perseus.config ]; then
             scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           fi
 
-          # B. 基础修复与物理清理
+          # B. 基础修复
           sed -i 's/.*ion_import_dma_buf_fd.*/0));/' drivers/char/adsprpc.c
           sed -i 's/.*ion_free(fl->apps->client, map->handle).*/0;/' drivers/char/adsprpc.c
           find drivers/staging/android/ion/ -name "*.h" -exec sed -i 's/^int msm_ion_do_cache_offset_op/static inline int msm_ion_do_cache_offset_op/g' {} +
           rm -f drivers/iommu/iommu-debug.c
 
-          # C. 彻底修复 USB BAM 多重定义 (删除原函数块并追加静态桩)
+          # C. 彻底修复 USB BAM 多重定义
           if [ -f include/linux/usb_bam.h ]; then
             sed -i '/^int msm_do_bam_disable_enable/,/^}/d' include/linux/usb_bam.h
             sed -i '/^int usb_bam_alloc_fifos/,/^}/d' include/linux/usb_bam.h
             sed -i '/^void usb_bam_free_fifos/,/^}/d' include/linux/usb_bam.h
-            cat <<EOT >> include/linux/usb_bam.h
-            struct usb_bam; 
-            static inline int msm_do_bam_disable_enable(struct usb_bam *bam, bool enable) { return 0; }
-            static inline int usb_bam_alloc_fifos(struct usb_bam *bam) { return 0; }
-            static inline void usb_bam_free_fifos(struct usb_bam *bam) { }
-            EOT
+            cat << 'EOF' >> include/linux/usb_bam.h
+          struct usb_bam; 
+          static inline int msm_do_bam_disable_enable(struct usb_bam *bam, bool enable) { return 0; }
+          static inline int usb_bam_alloc_fifos(struct usb_bam *bam) { return 0; }
+          static inline void usb_bam_free_fifos(struct usb_bam *bam) { }
+          EOF
           fi
           sed -i 's/^int msm_do_bam_disable_enable/\/\/int msm_do_bam_disable_enable/g' include/linux/usb/msm_hsusb.h
 
-          # D. 注入链接桩 (Stub) 并强制优先链接
-          cat <<EOF > drivers/soc/qcom/stub_fix.c
+          # D. 注入链接桩 (Stub)
+          cat << 'EOF' > drivers/soc/qcom/stub_fix.c
           #include <linux/types.h>
           #include <linux/export.h>
           int scm_call2(u32 cmd, void *p) { return 0; }
@@ -95,10 +92,10 @@ jobs:
           EXPORT_SYMBOL(subsystem_notifier_register);
           int subsystem_notifier_unregister(void *n, void *nb) { return 0; }
           EXPORT_SYMBOL(subsystem_notifier_unregister);
-           EOF
+          EOF
           echo "obj-y := stub_fix.o \$(filter-out stub_fix.o, \$(obj-y))" >> drivers/soc/qcom/Makefile
 
-          # E. 修复链接脚本 (防止段丢弃)
+          # E. 修复链接脚本
           if [ -f arch/arm64/kernel/vmlinux.lds.S ]; then
             sed -i '1i#define RUNTIME_DISCARD_EXIT' arch/arm64/kernel/vmlinux.lds.S
           fi
@@ -117,8 +114,7 @@ jobs:
 
           yes "" | make O=out ARCH=arm64 CC=clang olddefconfig
 
-          # G. 两阶段编译 (vmlinux -> Image)
-          echo ">>> 阶段 1: 编译 vmlinux"
+          # G. 两阶段编译
           make -j$(nproc) O=out ARCH=arm64 CC=clang \
                CLANG_TRIPLE=aarch64-linux-gnu- \
                CROSS_COMPILE=aarch64-linux-android- \
@@ -128,7 +124,6 @@ jobs:
                vmlinux 2>&1 | tee build.log
 
           if [ -f out/vmlinux ]; then
-            echo "✅ vmlinux 生成成功，开始阶段 2"
             make -j$(nproc) O=out ARCH=arm64 CC=clang \
                  CLANG_TRIPLE=aarch64-linux-gnu- \
                  CROSS_COMPILE=aarch64-linux-android- \
@@ -137,43 +132,37 @@ jobs:
                  KCFLAGS="-Wno-error -I$(pwd)/techpack/audio/include -I$(pwd)/drivers/soc/qcom" \
                  Image Image.gz Image.gz-dtb 2>&1 | tee -a build.log
           else
-            echo "❌ vmlinux 编译失败"
+            echo "❌ vmlinux 失败"
             exit 1
           fi
 
-      - name: 5. 编译诊断统计
+      - name: 5. 编译诊断输出
         if: always()
         run: |
-          cd kernel-source
-          if [ -f build.log ]; then
+          if [ -f kernel-source/build.log ]; then
             echo "=== 未定义引用统计 ==="
-            grep -c "undefined reference" build.log || echo "0"
-            echo "=== 错误日志末尾 ==="
-            tail -100 build.log
+            grep -c "undefined reference" kernel-source/build.log || echo "0"
+            tail -n 100 kernel-source/build.log
           fi
 
-      - name: 6. 诊断并打包 AnyKernel3
+      - name: 6. 打包 AnyKernel3
         run: |
           cd kernel-source
           mkdir -p out/arch/arm64/boot/
           git clone https://github.com/osm0sis/AnyKernel3.git
-          
-          # 拷贝产物
           cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/ 2>/dev/null || \
           cp out/arch/arm64/boot/Image.gz AnyKernel3/ 2>/dev/null || \
           cp out/arch/arm64/boot/Image AnyKernel3/ 2>/dev/null || true
-
           if [ -f AnyKernel3/Image* ]; then
             cd AnyKernel3
             sed -i 's/device.name1=maguro/device.name1=perseus/' anykernel.sh
             sed -i 's/device.name2=toroplus/device.name2=mix3/' anykernel.sh
             zip -r ../../Mix3-Kernel-Final.zip *
           else
-            echo "错误：未发现镜像文件"
             exit 1
           fi
 
-      - name: 7. 上传产物
+      - name: 7. 上传结果
         if: always()
         uses: actions/upload-artifact@v4
         with:
