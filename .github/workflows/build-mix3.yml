@@ -32,12 +32,12 @@ jobs:
           echo "GCC64_PATH=$(pwd)/toolchain/gcc64/bin" >> $GITHUB_ENV
           echo "GCC32_PATH=$(pwd)/toolchain/gcc32/bin" >> $GITHUB_ENV
 
-      - name: 4. 执行核心编译 (终极排障版)
+      - name: 4. 执行核心编译 (轻量化稳健版)
         run: |
           cd kernel-source
           export PATH=$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH
           
-          # A. 配置初始化
+          # A. 初始化
           rm -rf out && mkdir -p out
           make O=out ARCH=arm64 CC=clang sdm845_defconfig
           
@@ -45,26 +45,24 @@ jobs:
             scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           fi
 
-          # B. 【代码层物理补丁 - 核心部分】
-          # 1. 修复 adsprpc 与 ION 重定义
+          # B. 核心代码修复 (USB, ION, ADSPRPC)
           sed -i 's/.*ion_import_dma_buf_fd.*/0));/' drivers/char/adsprpc.c
           sed -i 's/.*ion_free(fl->apps->client, map->handle).*/0;/' drivers/char/adsprpc.c
-          find drivers/staging/android/ion/ -name "*.h" -exec sed -i 's/^int msm_ion_do_cache_offset_op/static inline int msm_ion_do_cache_offset_op/g' {} +
-
-          # 2. USB 重定义终极修复 (重命名法，解决 Multiple Definition)
           sed -i 's/int msm_do_bam_disable_enable/static inline int msm_do_bam_disable_enable_old/g' include/linux/usb_bam.h
           sed -i 's/int usb_bam_alloc_fifos/static inline int usb_bam_alloc_fifos_old/g' include/linux/usb_bam.h
           sed -i 's/int usb_bam_free_fifos/static inline int usb_bam_free_fifos_old/g' include/linux/usb_bam.h
           sed -i 's/int msm_do_bam_disable_enable/static inline int msm_do_bam_disable_enable_hsusb/g' include/linux/usb/msm_hsusb.h
+          find drivers/staging/android/ion/ -name "*.h" -exec sed -i 's/^int msm_ion_do_cache_offset_op/static inline int msm_ion_do_cache_offset_op/g' {} +
 
-          # 3. 全局屏蔽 subsystem 与 SCM 依赖 (解决 Undefined Reference)
+          # C. 物理屏蔽冲突符号 (关键：全面清理已知的链接死穴)
           find . -name "*.c" -exec sed -i 's/subsystem_get(/0; \/\/ /g' {} +
           find . -name "*.c" -exec sed -i 's/subsystem_put(/0; \/\/ /g' {} +
           find . -name "*.c" -exec sed -i 's/subsystem_notifier_register(/0; \/\/ /g' {} +
           find . -name "*.c" -exec sed -i 's/subsystem_notifier_unregister(/0; \/\/ /g' {} +
           find . -name "*.c" -exec sed -i 's/scm_call2(/0; \/\/ /g' {} +
+          find . -name "*.c" -exec sed -i 's/scm_call2_atomic(/0; \/\/ /g' {} +
 
-          # C. 【配置层补丁 - 补全地基】
+          # D. 配置补全 (移除全局内置指令，降低链接内存压力)
           {
             echo "CONFIG_MSM_SUBSYSTEM_RESTART=y"
             echo "CONFIG_MSM_PIL=y"
@@ -82,12 +80,10 @@ jobs:
             echo "CONFIG_EFI=n"
           } >> out/.config
 
-          # 强制模块内置
-          sed -i 's/=m/=y/g' out/.config
           yes "" | make O=out ARCH=arm64 CC=clang olddefconfig
 
-          # D. 全量编译 (注入额外头文件路径)
-          make -j$(nproc) O=out \
+          # E. 执行编译 (j2 以牺牲速度换取链接阶段不崩)
+          make -j2 O=out \
                         ARCH=arm64 \
                         CC=clang \
                         CLANG_TRIPLE=aarch64-linux-gnu- \
@@ -110,10 +106,10 @@ jobs:
           cd AnyKernel3
           sed -i 's/device.name1=maguro/device.name1=perseus/' anykernel.sh
           sed -i 's/device.name2=toroplus/device.name2=mix3/' anykernel.sh
-          zip -r ../Mix3-Kernel-Final-Result.zip *
+          zip -r ../Mix3-Kernel-Result.zip *
 
       - name: 6. 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: Mix3-Kernel-Final-Build
-          path: Mix3-Kernel-Final-Result.zip
+          name: Mix3-Kernel-Build
+          path: Mix3-Kernel-Result.zip
