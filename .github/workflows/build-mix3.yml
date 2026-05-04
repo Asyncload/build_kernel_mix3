@@ -32,7 +32,7 @@ jobs:
           echo "GCC64_PATH=$(pwd)/toolchain/gcc64/bin" >> $GITHUB_ENV
           echo "GCC32_PATH=$(pwd)/toolchain/gcc32/bin" >> $GITHUB_ENV
 
-      - name: 4. 执行核心编译 (最终稳定版)
+      - name: 4. 执行核心编译 (终极整合版)
         run: |
           cd kernel-source
           export PATH=$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH
@@ -46,19 +46,13 @@ jobs:
             scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           fi
 
-          # 清理可能残留的其他机型配置（避免 Kconfig 警告）
-          sed -i '/CONFIG_MACH_XIAOMI_E5/d' out/.config
-          if [ -f arch/arm64/configs/vendor/xiaomi/perseus.config ]; then
-            sed -i '/CONFIG_MACH_XIAOMI_E5/d' arch/arm64/configs/vendor/xiaomi/perseus.config
-          fi
-
           # B. 基础修复
           sed -i 's/.*ion_import_dma_buf_fd.*/0));/' drivers/char/adsprpc.c
           sed -i 's/.*ion_free(fl->apps->client, map->handle).*/0;/' drivers/char/adsprpc.c
           find drivers/staging/android/ion/ -name "*.h" -exec sed -i 's/^int msm_ion_do_cache_offset_op/static inline int msm_ion_do_cache_offset_op/g' {} +
           rm -f drivers/iommu/iommu-debug.c
 
-          # C. 彻底修复 USB BAM 多重定义与参数匹配问题
+          # C. 彻底修复 USB BAM (宏定义兼容方案)
           if [ -f include/linux/usb_bam.h ]; then
             sed -i '/^int msm_do_bam_disable_enable/,/^}/d' include/linux/usb_bam.h
             sed -i '/^int usb_bam_alloc_fifos/,/^}/d' include/linux/usb_bam.h
@@ -69,8 +63,13 @@ jobs:
           fi
           sed -i 's/^int msm_do_bam_disable_enable/\/\/int msm_do_bam_disable_enable/g' include/linux/usb/msm_hsusb.h
 
-          # D. 注入链接桩 (使用 printf 替代 cat)
-          printf '#include <linux/types.h>\n#include <linux/export.h>\n' > drivers/soc/qcom/stub_fix.c
+          # D. 注入链接桩 (EFI 符号与 subsystem 桩整合)
+          printf '#include <linux/types.h>\n#include <linux/export.h>\n#include <linux/string.h>\n' > drivers/soc/qcom/stub_fix.c
+          # EFI/UEFI stub 缺失符号修复
+          printf 'char *__efistub_strrchr(const char *s, int c) { return strrchr(s, c); }\nEXPORT_SYMBOL(__efistub_strrchr);\n' >> drivers/soc/qcom/stub_fix.c
+          printf 'char *__efistub_strchr(const char *s, int c) { return strchr(s, c); }\nEXPORT_SYMBOL(__efistub_strchr);\n' >> drivers/soc/qcom/stub_fix.c
+          printf 'size_t __efistub_strlen(const char *s) { return strlen(s); }\nEXPORT_SYMBOL(__efistub_strlen);\n' >> drivers/soc/qcom/stub_fix.c
+          # Subsystem 相关桩函数
           printf 'int scm_call2(u32 c, void *p){return 0;}\nEXPORT_SYMBOL(scm_call2);\n' >> drivers/soc/qcom/stub_fix.c
           printf 'int scm_call2_atomic(u32 c, void *p){return 0;}\nEXPORT_SYMBOL(scm_call2_atomic);\n' >> drivers/soc/qcom/stub_fix.c
           printf 'int scm_call_atomic1(u32 s, u32 c, u32 a1){return 0;}\nEXPORT_SYMBOL(scm_call_atomic1);\n' >> drivers/soc/qcom/stub_fix.c
@@ -89,16 +88,17 @@ jobs:
             sed -i '1i#define RUNTIME_DISCARD_EXIT' arch/arm64/kernel/vmlinux.lds.S
           fi
 
-          # F. 配置补全 (修正 CONFIG_MSM_PIL，不是 CONFIG_PIL)
+          # F. 配置补全
           {
             echo "CONFIG_MSM_SUBSYSTEM_RESTART=y"
-            echo "CONFIG_MSM_PIL=y"
+            echo "CONFIG_PIL=y"
             echo "CONFIG_QCOM_SCM=y"
             echo "CONFIG_QCOM_SCM_64=y"
             echo "CONFIG_SND_SOC_QDSP6V2=y"
             echo "CONFIG_MSM_QDSP6_APRV2=y"
             echo "CONFIG_CC_STACKPROTECTOR_STRONG=y"
             echo "CONFIG_IOMMU_DEBUG=n"
+            echo "CONFIG_EFI=n"
           } >> out/.config
 
           yes "" | make O=out ARCH=arm64 CC=clang olddefconfig
@@ -109,7 +109,7 @@ jobs:
                CROSS_COMPILE=aarch64-linux-android- \
                CROSS_COMPILE_ARM32=arm-linux-androideabi- \
                AR=llvm-ar NM=llvm-nm \
-               KCFLAGS="-Wno-error -Wno-implicit-function-declaration -Wno-int-conversion -Wno-incompatible-pointer-types -I$(pwd)/drivers/soc/qcom" \
+               KCFLAGS="-Wno-error -Wno-implicit-function-declaration -Wno-int-conversion -Wno-incompatible-pointer-types -I$(pwd)/techpack/audio/include -I$(pwd)/drivers/soc/qcom" \
                vmlinux 2>&1 | tee build.log
 
           if [ -f out/vmlinux ]; then
@@ -118,7 +118,7 @@ jobs:
                  CROSS_COMPILE=aarch64-linux-android- \
                  CROSS_COMPILE_ARM32=arm-linux-androideabi- \
                  AR=llvm-ar NM=llvm-nm \
-                 KCFLAGS="-Wno-error -I$(pwd)/drivers/soc/qcom" \
+                 KCFLAGS="-Wno-error -I$(pwd)/techpack/audio/include -I$(pwd)/drivers/soc/qcom" \
                  Image Image.gz Image.gz-dtb 2>&1 | tee -a build.log
           else
             echo "❌ vmlinux 编译失败"
@@ -131,7 +131,6 @@ jobs:
           if [ -f kernel-source/build.log ]; then
             echo "=== 未定义引用统计 ==="
             grep -c "undefined reference" kernel-source/build.log || echo "0"
-            echo "=== 最后 100 行错误 ==="
             tail -n 100 kernel-source/build.log
           fi
 
@@ -149,7 +148,6 @@ jobs:
             sed -i 's/device.name2=toroplus/device.name2=mix3/' anykernel.sh
             zip -r ../../Mix3-Kernel-Final.zip *
           else
-            echo "No kernel image found, skipping packaging"
             exit 1
           fi
 
