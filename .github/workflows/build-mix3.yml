@@ -12,16 +12,10 @@ jobs:
     steps:
       - name: 1. 环境初始化 (容错增强版)
         run: |
-          # 忽略 update 阶段的非致命错误
           sudo apt-get update || true
-          
-          # 针对 Proton Clang 等工具链需要的旧版库进行安装
           wget -q http://mirrors.kernel.org/ubuntu/pool/universe/n/ncurses/libtinfo5_6.4-2_amd64.deb || \
-          wget -q https://mirrors.edge.kernel.org/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2_amd64.deb
-          
+          wget -q https://mirrors.edge.kernel.org/ubuntu/pool/universe/n/ncurses/libtinfo5_6.4-2_amd64.deb
           sudo apt install ./libtinfo5*.deb -y
-          
-          # 安装核心编译组件
           sudo apt-get install -y bc bison build-essential flex libssl-dev libelf-dev python3 git zip rsync libncurses5
 
       - name: 2. 克隆源码 (Lineage-21)
@@ -39,7 +33,7 @@ jobs:
           echo "GCC64_PATH=$(pwd)/toolchain/gcc64/bin" >> $GITHUB_ENV
           echo "GCC32_PATH=$(pwd)/toolchain/gcc32/bin" >> $GITHUB_ENV
 
-      - name: 4. 执行核心编译 (全符号屏蔽通关版)
+      - name: 4. 执行核心编译 (音频全符号屏蔽版)
         run: |
           cd kernel-source
           export PATH=$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH
@@ -61,8 +55,7 @@ jobs:
           sed -i 's/int msm_do_bam_disable_enable/static inline int msm_do_bam_disable_enable_hsusb/g' include/linux/usb/msm_hsusb.h
           find drivers/staging/android/ion/ -name "*.h" -exec sed -i 's/^int msm_ion_do_cache_offset_op/static inline int msm_ion_do_cache_offset_op/g' {} +
 
-          # C. 【全符号屏蔽】针对链接失败的符号进行宏替换
-          # 1. 屏蔽 SCM 冲突符号
+          # C. 【精准屏蔽】扩大屏蔽范围，解决 AFE 和 CAL 链接错误
           {
             echo -e "\n/* Dola: Linker Fixes */"
             echo "#define scm_call2(...) 0"
@@ -71,17 +64,21 @@ jobs:
             echo "#define scm_call_atomic1(...) 0"
           } >> include/soc/qcom/scm.h
           
-          # 2. 屏蔽音频 APR 接口
-          if [ -f techpack/audio/include/dsp/apr_audio-v2.h ]; then
+          if [ -d techpack/audio/include/dsp ]; then
             echo "#define apr_get_q6_state(...) 0" >> techpack/audio/include/dsp/apr_audio-v2.h
+            echo "#define afe_set_routing_callback(...) 0" >> techpack/audio/include/dsp/msm_audio_ion.h || true
+            echo "#define afe_set_routing_callback(...) 0" >> techpack/audio/include/dsp/q6afe-v2.h || true
           fi
-          
-          # 3. 屏蔽子系统获取接口
+
+          if [ -f techpack/audio/include/asoc/msm-cal-utils.h ]; then
+            echo "#define cal_utils_match_buf_num(...) 0" >> techpack/audio/include/asoc/msm-cal-utils.h
+          fi
+
           if [ -f include/soc/qcom/subsystem_restart.h ]; then
             echo -e "#define subsystem_get(...) 0\n#define subsystem_put(...) 0" >> include/soc/qcom/subsystem_restart.h
           fi
 
-          # D. 配置补全
+          # D. 配置补足
           {
             echo "CONFIG_MSM_SUBSYSTEM_RESTART=y"
             echo "CONFIG_MSM_PIL=y"
@@ -117,10 +114,10 @@ jobs:
           cd AnyKernel3
           sed -i 's/device.name1=maguro/device.name1=perseus/' anykernel.sh
           sed -i 's/device.name2=toroplus/device.name2=mix3/' anykernel.sh
-          zip -r ../Mix3-Kernel-Final.zip *
+          zip -r ../Mix3-Kernel-Result.zip *
 
       - name: 6. 上传产物
         uses: actions/upload-artifact@v4
         with:
           name: Mix3-Kernel-Final
-          path: Mix3-Kernel-Final.zip
+          path: Mix3-Kernel-Result.zip
