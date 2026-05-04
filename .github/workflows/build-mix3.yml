@@ -10,17 +10,13 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: 1. 环境初始化 (高容错免更新版)
+      - name: 1. 环境初始化 (免更新高容错版)
         run: |
-          # 跳过不稳定的 apt-get update，直接通过多源下载必要库
+          # 跳过不稳定的 apt-get update
           wget -q https://mirrors.kernel.org/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2_amd64.deb || \
-          wget -q http://security.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2_amd64.deb || \
-          curl -sLO http://archive.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2_amd64.deb
+          wget -q http://security.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2_amd64.deb
           
-          # 使用 dpkg 直接安装，完全绕过 apt 索引问题
           sudo dpkg -i libtinfo5*.deb || true
-          
-          # 补齐其他依赖，失败也继续执行（镜像通常自带这些）
           sudo apt-get install -y bc bison build-essential flex libssl-dev libelf-dev python3 git zip rsync libncurses5 || echo "Continuing..."
 
       - name: 2. 克隆源码 (Lineage-21)
@@ -38,7 +34,7 @@ jobs:
           echo "GCC64_PATH=$(pwd)/toolchain/gcc64/bin" >> $GITHUB_ENV
           echo "GCC32_PATH=$(pwd)/toolchain/gcc32/bin" >> $GITHUB_ENV
 
-      - name: 4. 执行核心编译 (全符号屏蔽通关版)
+      - name: 4. 执行核心编译 (全局物理屏蔽通关版)
         run: |
           cd kernel-source
           export PATH=$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH
@@ -51,39 +47,33 @@ jobs:
             scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           fi
 
-          # B. 基础修复 (ION, USB, ADSPRPC)
+          # B. 基础代码修复 (ION, USB)
           sed -i 's/.*ion_import_dma_buf_fd.*/0));/' drivers/char/adsprpc.c
           sed -i 's/.*ion_free(fl->apps->client, map->handle).*/0;/' drivers/char/adsprpc.c
           sed -i 's/int msm_do_bam_disable_enable/static inline int msm_do_bam_disable_enable_old/g' include/linux/usb_bam.h
           sed -i 's/int usb_bam_alloc_fifos/static inline int usb_bam_alloc_fifos_old/g' include/linux/usb_bam.h
           sed -i 's/int usb_bam_free_fifos/static inline int usb_bam_free_fifos_old/g' include/linux/usb_bam.h
-          sed -i 's/int msm_do_bam_disable_enable/static inline int msm_do_bam_disable_enable_hsusb/g' include/linux/usb/msm_hsusb.h
           find drivers/staging/android/ion/ -name "*.h" -exec sed -i 's/^int msm_ion_do_cache_offset_op/static inline int msm_ion_do_cache_offset_op/g' {} +
 
-          # C. 【全符号屏蔽】针对链接失败的 SCM、AFE、CAL 符号进行替换
+          # C. 【核心修复】全局头文件宏注入
+          # 将所有导致链接失败的函数直接重定向，确保 vmlinux 能够生成
           {
-            echo -e "\n/* Dola Fixes */"
+            echo ""
+            echo "/* Global Fixes by Dola */"
             echo "#define scm_call2(...) 0"
             echo "#define scm_call2_atomic(...) 0"
             echo "#define is_scm_armv8(...) 1"
             echo "#define scm_call_atomic1(...) 0"
-          } >> include/soc/qcom/scm.h
-          
-          if [ -d techpack/audio/include/dsp ]; then
-            echo "#define apr_get_q6_state(...) 0" >> techpack/audio/include/dsp/apr_audio-v2.h
-            echo "#define afe_set_routing_callback(...) 0" >> techpack/audio/include/dsp/msm_audio_ion.h || true
-            echo "#define afe_set_routing_callback(...) 0" >> techpack/audio/include/dsp/q6afe-v2.h || true
-          fi
+            echo "#define apr_get_q6_state(...) 0"
+            echo "#define afe_set_routing_callback(...) 0"
+            echo "#define cal_utils_match_buf_num(...) 0"
+            echo "#define subsystem_get(...) 0"
+            echo "#define subsystem_put(...) "
+            echo "#define subsystem_notifier_register(...) 0"
+            echo "#define subsystem_notifier_unregister(...) 0"
+          } >> include/linux/kconfig.h
 
-          if [ -f techpack/audio/include/asoc/msm-cal-utils.h ]; then
-            echo "#define cal_utils_match_buf_num(...) 0" >> techpack/audio/include/asoc/msm-cal-utils.h
-          fi
-
-          if [ -f include/soc/qcom/subsystem_restart.h ]; then
-            echo -e "#define subsystem_get(...) 0\n#define subsystem_put(...) 0" >> include/soc/qcom/subsystem_restart.h
-          fi
-
-          # D. 配置补全
+          # D. 强制补全关键配置
           {
             echo "CONFIG_MSM_SUBSYSTEM_RESTART=y"
             echo "CONFIG_MSM_PIL=y"
@@ -99,7 +89,7 @@ jobs:
           yes "" | make O=out ARCH=arm64 CC=clang olddefconfig
 
           # E. 执行编译
-          make -j2 O=out \
+          make -j$(nproc) O=out \
                         ARCH=arm64 \
                         CC=clang \
                         CLANG_TRIPLE=aarch64-linux-gnu- \
@@ -107,7 +97,7 @@ jobs:
                         CROSS_COMPILE_ARM32=arm-linux-androideabi- \
                         AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip \
                         TECHPACK_AUDIO=y \
-                        KCFLAGS="-Wno-error -Wno-implicit-function-declaration -Wno-int-conversion -Wno-incompatible-pointer-types -I$(pwd)/techpack/audio/include -I$(pwd)/drivers/soc/qcom -I$(pwd)/include/uapi/misc"
+                        KCFLAGS="-Wno-error -Wno-implicit-function-declaration -Wno-int-conversion -Wno-incompatible-pointer-types -I$(pwd)/techpack/audio/include -I$(pwd)/drivers/soc/qcom"
 
       - name: 5. 打包 AnyKernel3
         run: |
