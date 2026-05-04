@@ -32,7 +32,7 @@ jobs:
           echo "GCC64_PATH=$(pwd)/toolchain/gcc64/bin" >> $GITHUB_ENV
           echo "GCC32_PATH=$(pwd)/toolchain/gcc32/bin" >> $GITHUB_ENV
 
-      - name: 4. 执行核心编译 (精准宏屏蔽版)
+      - name: 4. 执行核心编译 (音频符号补全版)
         run: |
           cd kernel-source
           export PATH=$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH
@@ -54,28 +54,29 @@ jobs:
           sed -i 's/int msm_do_bam_disable_enable/static inline int msm_do_bam_disable_enable_hsusb/g' include/linux/usb/msm_hsusb.h
           find drivers/staging/android/ion/ -name "*.h" -exec sed -i 's/^int msm_ion_do_cache_offset_op/static inline int msm_ion_do_cache_offset_op/g' {} +
 
-          # C. 【核心修复】针对 scm 声明冲突的精准屏蔽
-          # 在所有头文件声明之后注入宏，确保调用被屏蔽但不破坏语法
+          # C. 【精准屏蔽】处理缺失符号 (SCM & Audio APR)
           echo -e "\n#define scm_call2(...) 0\n#define scm_call2_atomic(...) 0" >> include/soc/qcom/scm.h
+          
+          # 核心修复：屏蔽导致链接失败的音频状态函数
+          if [ -f techpack/audio/include/dsp/apr_audio-v2.h ]; then
+            echo -e "\n#define apr_get_q6_state(...) 0" >> techpack/audio/include/dsp/apr_audio-v2.h
+          fi
           
           if [ -f include/soc/qcom/subsystem_restart.h ]; then
             echo -e "\n#define subsystem_get(...) 0\n#define subsystem_put(...) 0" >> include/soc/qcom/subsystem_restart.h
           fi
-          if [ -f include/soc/qcom/subsystem_notif.h ]; then
-            echo -e "\n#define subsystem_notifier_register(...) 0\n#define subsystem_notifier_unregister(...) 0" >> include/soc/qcom/subsystem_notif.h
-          fi
 
-          # D. 配置补全 (针对 Clang 优化)
+          # D. 配置补全
           {
             echo "CONFIG_MSM_SUBSYSTEM_RESTART=y"
             echo "CONFIG_MSM_PIL=y"
             echo "CONFIG_QCOM_SCM=y"
             echo "CONFIG_QCOM_SCM_64=y"
-            echo "CONFIG_QCOM_COMMAND_DB=y"
-            echo "CONFIG_QCOM_RPMH=y"
             echo "CONFIG_SND_SOC_QDSP6V2=y"
             echo "CONFIG_MSM_QDSP6_APRV2=y"
+            echo "CONFIG_MSM_QDSP6_SSR=y"
             echo "CONFIG_SND_SOC_MSM_QDSP6V2_INTF=y"
+            echo "CONFIG_SND_SOC_QDSP6V2_ELP=n"
             echo "CONFIG_CC_STACKPROTECTOR_STRONG=y"
             echo "CONFIG_IOMMU_DEBUG=n"
             echo "CONFIG_EFI=n"
@@ -97,20 +98,18 @@ jobs:
       - name: 5. 打包 AnyKernel3
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git
-          if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
-            cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
-          elif [ -f kernel-source/out/arch/arm64/boot/Image.gz ]; then
-            cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/
-          elif [ -f kernel-source/out/arch/arm64/boot/Image ]; then
-            cp kernel-source/out/arch/arm64/boot/Image AnyKernel3/
+          # 查找并拷贝内核镜像
+          find kernel-source/out/arch/arm64/boot/ -name "Image.gz*" -exec cp {} AnyKernel3/ \;
+          if [ ! -f AnyKernel3/Image.gz* ]; then
+            cp kernel-source/out/arch/arm64/boot/Image AnyKernel3/ || echo "No Image found"
           fi
           cd AnyKernel3
           sed -i 's/device.name1=maguro/device.name1=perseus/' anykernel.sh
           sed -i 's/device.name2=toroplus/device.name2=mix3/' anykernel.sh
-          zip -r ../Mix3-Kernel-Result.zip *
+          zip -r ../Mix3-Kernel-Success.zip *
 
       - name: 6. 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: Mix3-Kernel-Result
-          path: Mix3-Kernel-Result.zip
+          name: Mix3-Kernel-Final-Success
+          path: Mix3-Kernel-Success.zip
