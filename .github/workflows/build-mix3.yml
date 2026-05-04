@@ -79,7 +79,7 @@ jobs:
           EXPORT_SYMBOL(subsystem_notifier_register);
           int subsystem_notifier_unregister(void *n, void *nb) { return 0; }
           EXPORT_SYMBOL(subsystem_notifier_unregister);
-EOF
+          EOF
           echo "obj-y += stub_fix.o" >> drivers/soc/qcom/Makefile
 
           # 专门针对 Techpack 音频驱动打补丁
