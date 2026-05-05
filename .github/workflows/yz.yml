@@ -1,13 +1,13 @@
-name: Kernel Validation Workflow
+name: Config File Validation
 
 on:
   push:
     paths:
-      - '.github/workflows/validation.yml'
+      - '.github/workflows/config_validation.yml'
   workflow_dispatch:
 
 jobs:
-  validate:
+  validate-config:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -17,31 +17,24 @@ jobs:
           ref: lineage-21
           submodules: recursive
 
-      - name: Validate Branch
+      - name: Verify config path
         run: |
-          echo "=== Branch Check ==="
-          git branch -a | grep -q lineage-21 || {
-            echo "❌ Error: lineage-21 branch not found"
-            exit 1
-          }
-          echo "✅ Branch OK"
-
-      - name: Validate Config Path
-        run: |
-          echo "=== Config Check ==="
+          echo "=== Config File Check ==="
+          
+          # 检查符号链接或实际文件
           if [ ! -f arch/arm64/configs/perseus_defconfig ]; then
-            echo "❌ Error: perseus_defconfig missing"
-            echo "Available configs:"
-            ls -lR arch/arm64/configs/
+            echo "❌ Error: perseus_defconfig not found"
+            echo "Available configs in arch/arm64/configs/:"
+            ls -l arch/arm64/configs/*.defconfig
+            echo "Available configs in vendor/xiaomi/:"
+            ls -l arch/arm64/configs/vendor/xiaomi/*.config
             exit 1
           fi
-          echo "✅ Config OK"
-
-      - name: Validate Toolchain
-        run: |
-          echo "=== Toolchain Check ==="
-          aarch64-linux-android-14.0-gcc --version || {
-            echo "❌ Error: Android 14 toolchain missing"
+          
+          # 验证配置内容
+          grep "CONFIG_ANDROID" arch/arm64/configs/perseus_defconfig || {
+            echo "❌ Error: Missing Android-related configurations"
             exit 1
           }
-          echo "✅ Toolchain OK"
+          
+          echo "✅ Config file validation passed"
