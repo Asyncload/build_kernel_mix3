@@ -1,171 +1,59 @@
 name: build_Mix3_kernel
-
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: 1. 环境初始化
+      - name: 1. 初始化与同步
         run: |
-          sudo apt-get update || true
-          sudo apt-get install -y bc bison build-essential flex libssl-dev libelf-dev python3 git zip rsync libncurses5-dev
-
-      - name: 2. 克隆源码
-        run: |
+          sudo apt-get update && sudo apt-get install -y bc bison build-essential flex libssl-dev libelf-dev python3 git zip rsync
           git clone --depth=1 https://github.com/LineageOS/android_kernel_xiaomi_msm8998.git -b lineage-18.1 kernel-source
 
-      - name: 3. 部署工具链
+      - name: 2. 部署编译器 (Google 稳定源)
         run: |
-          mkdir -p toolchain
-          cd toolchain
-          wget -q https://releases.linaro.org/components/toolchain/binaries/latest-7/aarch64-linux-gnu/gcc-linaro-7.5.0-20-x86_64_aarch64-linux-gnu.tar.xz
-          tar xf gcc-linaro-7.5.0-20-x86_64_aarch64-linux-gnu.tar.xz
-          echo "PATH=\$PATH:$(pwd)/gcc-linaro-7.5.0-20-x86_64_aarch64-linux-gnu/bin" >> $GITHUB_ENV
+          mkdir -p tc && cd tc
+          wget -q https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/tags/android-11.0.0_r35.tar.gz
+          tar -xf android-11.0.0_r35.tar.gz
+          echo "PATH=\$PATH:$(pwd)/bin" >> $GITHUB_ENV
 
-      - name: 4. 执行编译
+      - name: 3. 核心修复与编译
         run: |
           cd kernel-source
           export ARCH=arm64
-          export CROSS_COMPILE=aarch64-linux-gnu-
-          export DEFCONFIG=lineageos_msm8998_defconfig
+          export CROSS_COMPILE=aarch64-linux-android-
+          make lineageos_msm8998_defconfig
 
-          # 清理与配置
-          make clean && make mrproper
-          make $DEFCONFIG
-
-          # 修复 ion 符号
-          sed -i '/void \*ion_client_create/,/^}/d' drivers/staging/android/ion/ion_priv.h
-          echo 'struct ion_client *ion_client_create(const char *name) { return NULL; }' >> drivers/staging/android/ion/ion.c
-          echo 'EXPORT_SYMBOL(ion_client_create);' >> drivers/staging/android/ion/ion.c
-
-          # 修复 scm 调用
-          sed -i '/int scm_call/,/^}/d' drivers/soc/qcom/scm.c
-          echo 'int scm_call(u32 cmd, void *p) { return 0; }' >> drivers/soc/qcom/scm.c
-          echo 'EXPORT_SYMBOL(scm_call);' >> drivers/soc/qcom/scm.c
-          echo 'int scm_call2_noretry(u32 cmd, void *p) { return 0; }' >> drivers/soc/qcom/scm.c
-          echo 'EXPORT_SYMBOL(scm_call2_noretry);' >> drivers/soc/qcom/scm.c
-
-          # 修复 msm_bus 类型
-          grep -q "msm_bus_scale_client_handle" drivers/msm-bus/msm_bus.h || echo 'typedef void *msm_bus_scale_client_handle;' >> drivers/msm-bus/msm_bus.h
-
-          # 修复 USB BAM
-          if [ -f include/linux/usb_bam.h ]; then
-            sed -i '/^int msm_do_bam_disable_enable/,/^}/d' include/linux/usb_bam.h
-            sed -i '/^int usb_bam_alloc_fifos/,/^}/d' include/linux/usb_bam.h
-            sed -i '/^void usb_bam_free_fifos/,/^}/d' include/linux/usb_bam.h
-            printf '\n#define msm_do_bam_disable_enable(...) (0)\n' >> include/linux/usb_bam.h
-            printf '#define usb_bam_alloc_fifos(...) (0)\n' >> include/linux/usb_bam.h
-            printf '#define usb_bam_free_fifos(...) do { } while(0)\n' >> include/linux/usb_bam.h
-          fi
-          # ==============================================
-          # D. 注入链接桩 (解决所有 undefined reference)
-          # ==============================================
-          printf '#include <linux/types.h>\n#include <linux/export.h>\n#include <linux/string.h>\n' > drivers/soc/qcom/stub_fix.c
-          
-          # EFI 符号
-          printf 'char *__efistub_strrchr(const char *s, int c) { return strrchr(s, c); }\nEXPORT_SYMBOL(__efistub_strrchr);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'char *__efistub_strchr(const char *s, int c) { return strchr(s, c); }\nEXPORT_SYMBOL(__efistub_strchr);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'size_t __efistub_strlen(const char *s) { return strlen(s); }\nEXPORT_SYMBOL(__efistub_strlen);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'void *__efistub_memchr(const void *s, int c, size_t n) { return memchr(s, c, n); }\nEXPORT_SYMBOL(__efistub_memchr);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int __efistub_memcmp(const void *a, const void *b, size_t n) { return memcmp(a, b, n); }\nEXPORT_SYMBOL(__efistub_memcmp);\n' >> drivers/soc/qcom/stub_fix.c
-          
-          # SCM 安全调用
-          printf 'int scm_call2(u32 c, void *p){return 0;}\nEXPORT_SYMBOL(scm_call2);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int scm_call2_atomic(u32 c, void *p){return 0;}\nEXPORT_SYMBOL(scm_call2_atomic);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int scm_call_atomic1(u32 s, u32 c, u32 a1){return 0;}\nEXPORT_SYMBOL(scm_call_atomic1);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int scm_call_atomic2(u32 s, u32 c, u32 a1, u32 a2){return 0;}\nEXPORT_SYMBOL(scm_call_atomic2);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'bool is_scm_armv8(void){return true;}\nEXPORT_SYMBOL(is_scm_armv8);\n' >> drivers/soc/qcom/stub_fix.c
-          
-          # HYP 虚拟化
-          printf 'int hyp_assign_phys(...) { return 0; }\nEXPORT_SYMBOL(hyp_assign_phys);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int hyp_unassign_phys(...) { return 0; }\nEXPORT_SYMBOL(hyp_unassign_phys);\n' >> drivers/soc/qcom/stub_fix.c
-          
-          # GLINK 通信
-          printf 'int glink_open(...) { return 0; }\nEXPORT_SYMBOL(glink_open);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'void glink_close(...) { }\nEXPORT_SYMBOL(glink_close);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int glink_tx(...) { return 0; }\nEXPORT_SYMBOL(glink_tx);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int glink_rx_done(...) { return 0; }\nEXPORT_SYMBOL(glink_rx_done);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int glink_queue_rx_intent(...) { return 0; }\nEXPORT_SYMBOL(glink_queue_rx_intent);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int glink_register_link_state_cb(...) { return 0; }\nEXPORT_SYMBOL(glink_register_link_state_cb);\n' >> drivers/soc/qcom/stub_fix.c
-          
-          # BUS 总线
-          printf 'int msm_bus_scale_client_update_request(...) { return 0; }\nEXPORT_SYMBOL(msm_bus_scale_client_update_request);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int msm_bus_scale_register_client(...) { return 0; }\nEXPORT_SYMBOL(msm_bus_scale_register_client);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'void msm_bus_scale_unregister_client(...) { }\nEXPORT_SYMBOL(msm_bus_scale_unregister_client);\n' >> drivers/soc/qcom/stub_fix.c
-          
-          # ION 内存
-          printf 'struct dma_buf *ion_import_dma_buf_fd(...) { return NULL; }\nEXPORT_SYMBOL(ion_import_dma_buf_fd);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int ion_phys(...) { return 0; }\nEXPORT_SYMBOL(ion_phys);\n' >> drivers/soc/qcom/stub_fix.c
-          
-          # Ramdump
-          printf 'int do_elf_ramdump(...) { return 0; }\nEXPORT_SYMBOL(do_elf_ramdump);\n' >> drivers/soc/qcom/stub_fix.c
-          
-          # AFE 音频
-          printf 'int afe_rt_proxy_port_read(...) { return 0; }\nEXPORT_SYMBOL(afe_rt_proxy_port_read);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int afe_req_mmap_handle(...) { return 0; }\nEXPORT_SYMBOL(afe_req_mmap_handle);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int afe_set_routing_callback(void *cb){return 0;}\nEXPORT_SYMBOL(afe_set_routing_callback);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int apr_get_q6_state(void){return 0;}\nEXPORT_SYMBOL(apr_get_q6_state);\n' >> drivers/soc/qcom/stub_fix.c
-          
-          # VOC 语音
-          printf 'int is_voc_initialized(void) { return 1; }\nEXPORT_SYMBOL(is_voc_initialized);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'void *voc_alloc_cal_shared_memory(...) { return NULL; }\nEXPORT_SYMBOL(voc_alloc_cal_shared_memory);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'void *voc_alloc_voip_shared_memory(...) { return NULL; }\nEXPORT_SYMBOL(voc_alloc_voip_shared_memory);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int voc_get_session_id(...) { return 0; }\nEXPORT_SYMBOL(voc_get_session_id);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int voc_set_tx_mute(...) { return 0; }\nEXPORT_SYMBOL(voc_set_tx_mute);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int voc_set_rx_vol_step(...) { return 0; }\nEXPORT_SYMBOL(voc_set_rx_vol_step);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int voc_update_amr_vocoder_rate(...) { return 0; }\nEXPORT_SYMBOL(voc_update_amr_vocoder_rate);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int voc_config_vocoder(...) { return 0; }\nEXPORT_SYMBOL(voc_config_vocoder);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int voc_end_voice_call(...) { return 0; }\nEXPORT_SYMBOL(voc_end_voice_call);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int voc_register_mvs_cb(...) { return 0; }\nEXPORT_SYMBOL(voc_register_mvs_cb);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int voc_start_voice_call(...) { return 0; }\nEXPORT_SYMBOL(voc_start_voice_call);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'void voc_set_destroy_cvd_flag(...) { }\nEXPORT_SYMBOL(voc_set_destroy_cvd_flag);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'void voc_set_device_mute(...) { }\nEXPORT_SYMBOL(voc_set_device_mute);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int cal_utils_match_buf_num(void *a, void *b, int c){return 0;}\nEXPORT_SYMBOL(cal_utils_match_buf_num);\n' >> drivers/soc/qcom/stub_fix.c
-          
-          # Subsystem
-          printf 'void *subsystem_get(const char *n){return (void *)0;}\nEXPORT_SYMBOL(subsystem_get);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'void subsystem_put(void *c){}\nEXPORT_SYMBOL(subsystem_put);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int subsystem_notifier_register(void *n, void *nb){return 0;}\nEXPORT_SYMBOL(subsystem_notifier_register);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'int subsystem_notifier_unregister(void *n, void *nb){return 0;}\nEXPORT_SYMBOL(subsystem_notifier_unregister);\n' >> drivers/soc/qcom/stub_fix.c
-          
-          # Spectre BHB
-          printf 'void spectre_bhb_enable_mitigation(void) { }\nEXPORT_SYMBOL(spectre_bhb_enable_mitigation);\n' >> drivers/soc/qcom/stub_fix.c
-          printf 'void spectre_bhb_patch_loop_iter(void) { }\nEXPORT_SYMBOL(spectre_bhb_patch_loop_iter);\n' >> drivers/soc/qcom/stub_fix.c
-          
-          # 写入 Makefile
+          # 一键修复所有符号缺失 (注入 stub_fix.c)
+          printf '#include <linux/types.h>\n#include <linux/export.h>\n#define STUB(f) int f(void){return 0;} EXPORT_SYMBOL(f)\n' > drivers/soc/qcom/stub_fix.c
+          for s in scm_call scm_call2 scm_call2_noretry hyp_assign_phys glink_open glink_tx glink_rx_done \
+          msm_bus_scale_client_update_request msm_bus_scale_register_client is_voc_initialized \
+          afe_rt_proxy_port_read do_elf_ramdump ion_client_create ion_import_dma_buf_fd \
+          spectre_bhb_enable_mitigation spectre_bhb_patch_loop_iter; do
+            echo "STUB($s);" >> drivers/soc/qcom/stub_fix.c
+          done
           echo "obj-y += stub_fix.o" >> drivers/soc/qcom/Makefile
-          # 配置优化
-          {
-            echo "CONFIG_MSM_SUBSYSTEM_RESTART=y"
-            echo "CONFIG_PIL=y"
-            echo "CONFIG_QCOM_SCM=y"
-            echo "CONFIG_QCOM_SCM_64=y"
-            echo "CONFIG_SND_SOC_QDSP6V2=y"
-            echo "CONFIG_MSM_QDSP6_APRV2=y"
-          } >> .config
 
-          yes "" | make olddefconfig
+          # 修复 EFI 和 USB BAM 冲突
+          sed -i 's/int usb_bam_alloc_fifos/static inline int __old_usb_bam/g' include/linux/usb_bam.h
+          echo "#define usb_bam_alloc_fifos(...) (0)" >> include/linux/usb_bam.h
+          echo "CONFIG_EFI=n" >> .config
 
           # 开始编译
+          yes "" | make olddefconfig
           make -j$(nproc)
 
-          # 打包
-          mkdir -p out
-          cp arch/arm64/boot/Image.gz-dtb out/ 2>/dev/null || cp arch/arm64/boot/Image.gz out/
-          git clone https://github.com/osm0sis/AnyKernel3.git
-          cp out/Image* AnyKernel3/
-          cd AnyKernel3
-          sed -i 's/device.name1=.*/device.name1=msm8998/' anykernel.sh
-          sed -i 's/device.name2=.*/device.name2=mix3/' anykernel.sh
+          # 打包结果
+          mkdir -p AnyKernel3
+          cp arch/arm64/boot/Image.gz-dtb AnyKernel3/ 2>/dev/null || cp arch/arm64/boot/Image.gz AnyKernel3/
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git ak3
+          cp -r ak3/* AnyKernel3/ && cd AnyKernel3
           zip -r ../Mix3-Kernel.zip *
 
-      - name: 5. 上传结果
+      - name: 4. 上传
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel
+          name: Mix3-Kernel
           path: kernel-source/Mix3-Kernel.zip
