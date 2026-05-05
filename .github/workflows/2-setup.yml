@@ -1,1 +1,21 @@
 #环境与源码
+# Setup environment
+name: Setup
+on:
+  workflow_call:
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          repository: LineageOS/android_kernel_xiaomi_sdm845
+          ref: lineage-21
+          submodules: recursive
+      - name: Cache code
+        uses: actions/cache@v3
+        with:
+          path: .
+          key: ${{ runner.os }}-code-${{ github.sha }}
