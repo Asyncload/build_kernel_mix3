@@ -1,1 +1,28 @@
 #打包上传
+# Package & upload
+name: Package
+on:
+  workflow_call:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restore code cache
+        uses: actions/cache@v3
+        with:
+          path: .
+          key: ${{ runner.os }}-code-${{ github.sha }}
+      - name: Restore kernel cache
+        uses: actions/cache@v3
+        with:
+          path: out/arch/arm64/boot
+          key: ${{ runner.os }}-kernel-${{ github.sha }}
+      - name: Package boot image
+        run: |
+          ./mkbootimg --kernel out/arch/arm64/boot/Image.gz-dtb --output perseus-boot.img
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: perseus-kernel
+          path: perseus-boot.img
