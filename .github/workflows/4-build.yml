@@ -1,1 +1,35 @@
 #正式编译
+# Compile kernel
+name: Build
+on:
+  workflow_call:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restore code cache
+        uses: actions/cache@v3
+        with:
+          path: .
+          key: ${{ runner.os }}-code-${{ github.sha }}
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y gcc-aarch64-linux-gnu make bc bison flex libssl-dev
+      - name: Validate config files
+        run: |
+          if [ ! -f arch/arm64/configs/sdm845_defconfig ]; then exit 1; fi
+          if [ ! -f arch/arm64/configs/vendor/xiaomi/perseus.config ]; then exit 1; fi
+      - name: Compile kernel
+        run: |
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-android-
+          make O=out sdm845_defconfig
+          cat arch/arm64/configs/vendor/xiaomi/perseus.config >> out/.config
+          make -j$(nproc) O=out V=1
+      - name: Cache kernel artifact
+        uses: actions/cache@v3
+        with:
+          path: out/arch/arm64/boot
+          key: ${{ runner.os }}-kernel-${{ github.sha }}
