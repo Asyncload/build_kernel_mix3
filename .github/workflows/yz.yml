@@ -1,4 +1,4 @@
-name: Kernel Build Validation
+name: Kernel Validation Workflow
 
 on:
   push:
@@ -17,34 +17,31 @@ jobs:
           ref: lineage-21
           submodules: recursive
 
-      - name: Verify branch
+      - name: Validate Branch
         run: |
-          echo "Current branches:"
-          git branch -a
-          if ! git branch -a | grep -q lineage-21; then
-            echo "Error: lineage-21 branch not found"
+          echo "=== Branch Check ==="
+          git branch -a | grep -q lineage-21 || {
+            echo "❌ Error: lineage-21 branch not found"
             exit 1
-          fi
+          }
+          echo "✅ Branch OK"
 
-      - name: Validate config path
+      - name: Validate Config Path
         run: |
+          echo "=== Config Check ==="
           if [ ! -f arch/arm64/configs/perseus_defconfig ]; then
-            echo "Error: perseus_defconfig missing"
+            echo "❌ Error: perseus_defconfig missing"
             echo "Available configs:"
             ls -lR arch/arm64/configs/
             exit 1
           fi
+          echo "✅ Config OK"
 
-      - name: Check toolchain version
+      - name: Validate Toolchain
         run: |
-          aarch64-linux-android-14.0-gcc --version
-          if [ $? -ne 0 ]; then
-            echo "Error: Android 14 toolchain not found"
+          echo "=== Toolchain Check ==="
+          aarch64-linux-android-14.0-gcc --version || {
+            echo "❌ Error: Android 14 toolchain missing"
             exit 1
-          fi
-
-      - name: Verify environment
-        run: |
-          echo "ARCH=$ARCH"
-          echo "CROSS_COMPILE=$CROSS_COMPILE"
-          echo "ANDROID_MAJOR_VERSION=$ANDROID_MAJOR_VERSION"
+          }
+          echo "✅ Toolchain OK"
