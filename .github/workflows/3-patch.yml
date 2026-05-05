@@ -1,4 +1,3 @@
-#自动化修复
 # Apply patches
 name: Patch
 on:
@@ -13,24 +12,31 @@ jobs:
         with:
           path: .
           key: ${{ runner.os }}-code-${{ github.sha }}
-      - name: Apply patches (example)
+
+      - name: Create patch directory
         run: |
-          # Execute: git apply patches/*.patch (if needed)
-          echo "✅ Patch process completed"# Apply patches
-  name: Patch
-  on:
-    workflow_call:
- 
- jobs:
-  patch:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Restore code cache
-        uses: actions/cache@v3
-        with:
-          path: .
-          key: ${{ runner.os }}-code-${{ github.sha }}
-      - name: Apply patches (example)
+          mkdir -p patches  # 确保补丁目录存在
+
+      - name: Apply patches
         run: |
-          # Execute: git apply patches/*.patch (if needed)
-          echo "✅ Patch process completed"
+          # 检查是否有补丁文件
+          if [ -z "$(ls -A patches)" ]; then
+            echo "ℹ️ 没有找到补丁文件，跳过补丁步骤"
+            exit 0
+          fi
+
+          # 应用所有补丁
+          echo "=== 应用补丁 ==="
+          for patch in patches/*.patch; do
+            echo "📥 应用补丁: $(basename "$patch")"
+            git apply "$patch" || {
+              echo "❌ 补丁应用失败: $(basename "$patch")"
+              exit 1
+            }
+          done
+          echo "✅ 所有补丁应用成功"
+
+      - name: Commit patches (可选)
+        run: |
+          git add .
+          git commit -m "Apply patches: $(date +%Y%m%d%H%M)" || true
