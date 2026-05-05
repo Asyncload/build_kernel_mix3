@@ -1,1 +1,25 @@
-#总控
+# 总控工作流
+name: Perseus Kernel Build (Main)
+on: workflow_dispatch
+
+jobs:
+  # 步骤1：环境准备（代码检出、缓存）
+  setup:
+    uses: ./.github/workflows/2-setup.yml
+
+  # 步骤2：补丁处理（若有补丁可在此执行）
+  patch:
+    needs: setup
+    uses: ./.github/workflows/3-patch.yml
+
+  # 步骤3：内核编译（依赖安装、配置验证、编译）
+  build:
+    needs:
+      - setup
+      - patch
+    uses: ./.github/workflows/4-build.yml
+
+  # 步骤4：产物打包（镜像打包、上传）
+  package:
+    needs: build
+    uses: ./.github/workflows/5-package.yml
