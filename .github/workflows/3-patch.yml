@@ -1,1 +1,36 @@
 #自动化修复
+# Apply patches
+name: Patch
+on:
+  workflow_call:
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restore code cache
+        uses: actions/cache@v3
+        with:
+          path: .
+          key: ${{ runner.os }}-code-${{ github.sha }}
+      - name: Apply patches (example)
+        run: |
+          # Execute: git apply patches/*.patch (if needed)
+          echo "✅ Patch process completed"# Apply patches
+  name: Patch
+  on:
+    workflow_call:
+ 
+ jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restore code cache
+        uses: actions/cache@v3
+        with:
+          path: .
+          key: ${{ runner.os }}-code-${{ github.sha }}
+      - name: Apply patches (example)
+        run: |
+          # Execute: git apply patches/*.patch (if needed)
+          echo "✅ Patch process completed"
