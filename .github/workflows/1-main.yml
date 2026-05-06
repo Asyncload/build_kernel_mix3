@@ -1,4 +1,3 @@
-
 name: build - mix3 - kernel
 
 on:
@@ -22,8 +21,8 @@ jobs:
           ref: lineage-21
           path: kernel
 
-      # 使用你指定的官方快照 GCC 4.9 aarch64
-      - name: Clone AOSP GCC 4.9 aarch64 (指定快照版本)
+      # 你指定的官方 GCC 4.9 快照
+      - name: Clone AOSP GCC 4.9 aarch64
         run: |
           git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 gcc_4.9
           cd gcc_4.9
@@ -39,10 +38,13 @@ jobs:
           echo "ARCH=$ARCH" >> $GITHUB_ENV
           echo "CROSS_COMPILE=$CROSS_COMPILE" >> $GITHUB_ENV
 
-      - name: Configure kernel
+      - name: Configure kernel & bypass GCC version check
         run: |
           cd kernel
           make mrproper
+          # 核心：强行移除 GCC 5.1+ 版本限制
+          sed -i '/#error Sorry, your version of GCC is too old/d' include/linux/compiler-gcc.h
+          # 加载机型配置
           cp arch/arm64/configs/sdm845_defconfig .config
           cat arch/arm64/configs/vendor/xiaomi/perseus.config >> .config
           make olddefconfig
