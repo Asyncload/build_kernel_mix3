@@ -21,16 +21,18 @@ jobs:
           ref: lineage-21
           path: kernel
 
-      # ✅ 官方 GCC 7.3.1（稳定可靠）
-      - name: Clone AOSP GCC 7.3.1 aarch64
+      # 只用你提供的官方 Linaro GCC 5.1 下载链接
+      - name: Download & extract GCC 5.1 (Linaro official)
         run: |
-          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-7.3.1 gcc_7.3.1
+          wget https://releases-ie.linaro.org/components/toolchain/binaries/5.1-2015.08/aarch64-linux-gnu/gcc-linaro-5.1-2015.08-x86_64_aarch64-linux-gnu.tar.xz
+          tar -xf gcc-linaro-5.1-2015.08-x86_64_aarch64-linux-gnu.tar.xz
+          mv gcc-linaro-5.1-2015.08-x86_64_aarch64-linux-gnu gcc-5.1
 
-      - name: Set up environment
+      - name: Set env with GCC5.1
         run: |
-          export PATH=$PWD/gcc_7.3.1/bin:$PATH
+          export PATH=$PWD/gcc-5.1/bin:$PATH
           export ARCH=arm64
-          export CROSS_COMPILE=aarch64-linux-android-
+          export CROSS_COMPILE=aarch64-linux-gnu-
           echo "PATH=$PATH" >> $GITHUB_ENV
           echo "ARCH=$ARCH" >> $GITHUB_ENV
           echo "CROSS_COMPILE=$CROSS_COMPILE" >> $GITHUB_ENV
@@ -51,5 +53,5 @@ jobs:
       - name: Upload kernel artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Mix3-Perseus-Kernel
+          name: Mix3-GCC5.1-Kernel
           path: kernel/arch/arm64/boot/Image.gz
