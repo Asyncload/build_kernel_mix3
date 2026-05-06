@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   build_kernel:
@@ -32,8 +33,21 @@ jobs:
         run: |
           wget https://github.com/LineageOS/android_kernel_xiaomi_sdm845/raw/lineage-21/arch/arm64/configs/vendor/xiaomi/perseus.config
           mv perseus.config config
-          make mrproper
-          make oldconfig
+          make O=out ARCH=arm64 CC=clang sdm845_defconfig
+          if [ -f arch/arm64/configs/vendor/xiaomi/perseus.config ]; then
+            scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
+          fi
+          {
+            echo "CONFIG_MSM_SUBSYSTEM_RESTART=y"
+            echo "CONFIG_MSM_PIL=y"
+            echo "CONFIG_QCOM_SCM=y"
+            echo "CONFIG_QCOM_SCM_64=y"
+            echo "CONFIG_SND_SOC_QDSP6V2=y"
+            echo "CONFIG_MSM_QDSP6_APRV2=y"
+            echo "CONFIG_CC_STACKPROTECTOR_STRONG=y"
+            echo "CONFIG_IOMMU_DEBUG=n"
+          } >> out/.config
+          yes "" | make O=out ARCH=arm64 CC=clang olddefconfig
 
       - name: Compile
         run: |
