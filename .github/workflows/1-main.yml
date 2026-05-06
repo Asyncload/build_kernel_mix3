@@ -1,25 +1,32 @@
-# 总控工作流
 name: Perseus Kernel Build (Main)
-on: workflow_dispatch
+on: workflow_dispatch  # 手动触发工作流
 
 jobs:
-  # 步骤1：环境准备（代码检出、缓存）
-  xsetup:
-    uses: ./.github/workflows/2-setup.yml
+  # 步骤1：环境准备（无依赖）
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code  # 检出代码仓库
+        uses: actions/checkout@v4
+        with:
+          repository: LineageOS/android_kernel_xiaomi_sdm845  # 内核仓库
+          ref: lineage-21  # 分支
+          submodules: recursive  # 递归拉取子模块
 
-  # 步骤2：补丁处理（若有补丁可在此执行）
-  patch:
-    needs: xsetup
-    uses: ./.github/workflows/3-patch.yml
-
-  # 步骤3：内核编译（依赖安装、配置验证、编译）
+  # 步骤2：内核编译（依赖环境准备）
   build:
-    needs:
-      - xsetup
-      - patch
-    uses: ./.github/workflows/4-build.yml
+    needs: setup  # 必须等待setup完成
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restore code cache  # 恢复代码缓存加速编译
+        uses: actions/cache@v3
+        with:
+          path: .  # 缓存当前目录
+          key: ${{ runner.os }}-code-${{ github.sha }}  # 缓存键包含系统和提交哈希
 
-  # 步骤4：产物打包（镜像打包、上传）
-  package:
-    needs: build
-    uses: ./.github/workflows/5-package.yml
+      - name: Compile kernel  # 核心编译命令
+        run: |
+          export ARCH=arm64  # 设置架构为arm64
+          export CROSS_COMPILE=aarch64-linux-android-  # 设置交叉编译器前缀
+          make O=out sdm845_defconfig  # 生成默认配置
+          make -j$(nproc) O=out V=1  # 编译内核（-j指定线程数）
