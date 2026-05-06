@@ -1,5 +1,7 @@
-name: LineageOS 21 Kernel Build (GCC 11)
+name: LineageOS 21 Kernel Build (Perseus)
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       branch:
@@ -11,7 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      # 1. 初始化Git配置
+      # 1. 初始化环境
       - name: Setup Git
         run: |
           git config --global user.email "actions@github.com"
@@ -37,12 +39,17 @@ jobs:
           ref: ${{ inputs.branch }}
           submodules: recursive
 
-      # 4. 安装GCC 11工具链
-      - name: Install GCC 11
+      # 4. 安装工具链（修复版）
+      - name: Install toolchain
         run: |
-          sudo apt-get install -y \
-            gcc-11-aarch64-linux-gnu \
-            aarch64-linux-android-14
+          # 优先使用镜像加速下载
+          MIRROR_URL="https://mirrors.bfsu.edu.cn/git-repo/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-14.0"
+          if wget -q --spider "$MIRROR_URL/+archive/master.tar.gz"; then
+            wget -qO- "$MIRROR_URL/+archive/master.tar.gz" | tar -xz
+          else
+            wget -qO- "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-14.0/+archive/master.tar.gz" | tar -xz
+          fi
+          export PATH=$PWD/aarch64-linux-android-14.0/bin:$PATH
 
       # 5. 配置编译器优先级
       - name: Set GCC priority
@@ -53,7 +60,7 @@ jobs:
       - name: Configure build
         run: |
           export ARCH=arm64
-          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE=aarch64-linux-android-
           make O=out sdm845_defconfig
 
       - name: Compile kernel
