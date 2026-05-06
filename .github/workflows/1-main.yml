@@ -53,7 +53,7 @@ jobs:
           tar -czvf kernel_package.tar.gz lineageos_build
 
       - name: Upload
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: lineageos-kernel-package
           path: kernel_package.tar.gz
