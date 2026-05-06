@@ -34,14 +34,15 @@ jobs:
           sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/clk/qcom/mdss|' drivers/clk/qcom/mdss/mdss_pll_trace.h
           #修复 kgsl_trace.h
           sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/gpu/msm|' drivers/gpu/msm/kgsl_trace.h
+          #修复 kgsl_events.c
+          sed -i 's/#include <kgsl_device.h>/#include "kgsl_device.h"/' drivers/gpu/msm/kgsl_events.c
           
 
-      # 补丁3：find遍历批量替换，规避通配符报错
+      # 补丁3：蓝牙模块，规避通配符报错
       - name: Patch 2 — Global fix all btfm_slim local headers
         run: |
           cd kernel/drivers/bluetooth
           find . -maxdepth 1 -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's/<\(btfm_slim.*\.h\)>/"\1"/g' {} \;
-          sed -i 's/#include <kgsl_device.h>/#include "kgsl_device.h"/' drivers/gpu/msm/kgsl_events.c
           
 
       # 下载你指定的 Linaro GCC 5.1
