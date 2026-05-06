@@ -26,10 +26,11 @@ jobs:
         run: |
           cd kernel
           sed -i '469s/^pr_info/\/\//' fs/sdcardfs/main.c
-          sed -i '26s/<btfm_slim.h>/"btfm_slim.h"/' drivers/bluetooth/btfm_slim.c
-          sed -i '27s/<btfm_slim_wcn3990.h>/"btfm_slim_wcn3990.h"/' drivers/bluetooth/btfm_slim.c
-          sed -i 's/<btfm_slim.h>/"btfm_slim.h"/' drivers/bluetooth/btfm_slim_wcn3990.h
-          sed -i 's/<btfm_slim.h>/"btfm_slim.h"/' drivers/bluetooth/btfm_slim_wcn3990.c
+          #sed -i '26s/<btfm_slim.h>/"btfm_slim.h"/' drivers/bluetooth/btfm_slim.c
+          #sed -i '27s/<btfm_slim_wcn3990.h>/"btfm_slim_wcn3990.h"/' drivers/bluetooth/btfm_slim.c
+          #sed -i 's/<btfm_slim.h>/"btfm_slim.h"/' drivers/bluetooth/btfm_slim_wcn3990.h
+          #sed -i 's/<btfm_slim.h>/"btfm_slim.h"/' drivers/bluetooth/btfm_slim_wcn3990.c
+          sed -i 's/<\(btfm_slim.*\.h\)>/"\1"/g' *.c *.h
 
       # 下载你指定的 Linaro GCC 5.1
       - name: Download & extract GCC 5.1 (Linaro official)
