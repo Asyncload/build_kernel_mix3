@@ -26,6 +26,8 @@ jobs:
         run: |
           cd kernel
           sed -i '469s/^pr_info/\/\//' fs/sdcardfs/main.c
+          sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/clk/qcom/mdss|' drivers/clk/qcom/mdss/mdss_pll_trace.h
+          grep 'TRACE_INCLUDE_PATH' drivers/clk/qcom/mdss/mdss_pll_trace.h
           
 
       # 补丁2：find遍历批量替换，规避通配符报错
@@ -60,11 +62,6 @@ jobs:
           cp arch/arm64/configs/sdm845_defconfig .config
           cat arch/arm64/configs/vendor/xiaomi/perseus.config >> .config
           
-         
-          # 配置层面禁用 MDSS
-           sed -i 's/^CONFIG_MDSS=y/CONFIG_MDSS=n/' .config
-           # 物理屏蔽编译入口，彻底禁止编译 mdss 目录
-           sed -i 's/^obj-.*mdss/#&/' drivers/clk/qcom/Makefile
 
       - name: Build kernel
         run: |
