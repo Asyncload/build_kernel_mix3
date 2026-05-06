@@ -12,40 +12,35 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build - essential curl flex git libncurses5 - dev libssl - dev make python3 wget
+          sudo apt-get install -y bc bison build-essential curl flex git libncurses5-dev libssl-dev make python3 wget
       - name: Checkout kernel source
         uses: actions/checkout@v2
         with:
           repository: LineageOS/android_kernel_xiaomi_sdm845
           ref: lineage-21
           path: kernel
-
       - name: Clone AOSP GCC 4.9 (混合定位)
         run: |
-          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux - x86/arm/arm - linux - androideabi - 4.9 gcc_4.9
+          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 gcc_4.9
           cd gcc_4.9
           git checkout e9b2ab0932573a0ca90cad11ab75d9619f19c458
-
       - name: Set up environment variables
         run: |
           export PATH=$PWD/gcc_4.9/bin:$PATH
           export ARCH=arm64
-          export CROSS_COMPILE=arm - linux - androideabi -
-
+          export CROSS_COMPILE=arm-linux-androideabi-
       - name: Configure kernel
         run: |
           cd kernel
           cp arch/arm64/configs/sdm845_defconfig.config
           cp arch/arm64/configs/vendor/xiaomi/perseus.config.config
           make oldconfig
-
       - name: Build kernel
         run: |
           cd kernel
           make -j$(nproc)
-
       - name: Upload kernel file as an artifact
-        uses: actions/upload - artifact@v4
+        uses: actions/upload-artifact@v4
         with:
-          name: kernel - artifact
+          name: kernel-artifact
           path: kernel/arch/arm64/boot/Image.gz  # 根据实际情况调整
