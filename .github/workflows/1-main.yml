@@ -6,7 +6,7 @@ on:
 
 jobs:
   build_kernel:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v2
@@ -19,7 +19,8 @@ jobs:
       - name: Add Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses5-dev libreadline-dev libssl-dev libxml2-dev lzop openjdk-11-jdk pngcrush python python3 python3-pip repo rsync schedtool squashfs-tools zip zlib1g-dev
+          sudo apt-get install -y bc bison build-essential ccache flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32readline-dev lib32z1-dev liblz4-tool libncurses5-dev libreadline-dev libssl-dev libxml2-dev lzop openjdk-11-jdk pngcrush python-is-python3 python3 python3-pip repo rsync schedtool squashfs-tools zip zlib1g-dev
+          sudo apt-get install -y lib32ncurses5-dev || sudo apt-get install -y lib32ncursesw5-dev
 
       - name: Install Compilation Tools
         run: |
@@ -46,7 +47,6 @@ jobs:
 
       - name: Package
         run: |
-          # 这里需要根据实际情况添加打包命令，例如
           make modules_install
           find. -name '*.ko' -exec cp {}../lineageos_build/ \;
           cd..
