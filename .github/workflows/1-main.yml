@@ -1,82 +1,51 @@
-name: build_Mix3_kernel
+name: build - mix3 - kernel
 
 on:
   push:
-    branches: [ "main" ]
-  workflow_dispatch:
+    branches:
+      - main
 
 jobs:
-  build:
-    runs-on: ubuntu-22.04
-
+  build_kernel:
+    runs-on: ubuntu - 22.04
     steps:
-      - name: 1. 环境初始化
+      - name: Install build dependencies
         run: |
-          sudo apt-get update || true
-          wget -q https://mirrors.kernel.org/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2_amd64.deb || true
-          sudo dpkg -i libtinfo5*.deb || true
-          sudo apt-get install -y bc bison build-essential flex libssl-dev libelf-dev python3 git zip rsync libncurses5
-
-      - name: 2. 克隆源码 (Lineage-21)
-        run: |
-          git clone https://github.com/LineageOS/android_kernel_xiaomi_sdm845.git -b lineage-21 --depth=1 kernel-source
-
-
-      - name: 4. 执行核心编译 
-        run: |
-          cd kernel-source
-          export PATH=$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:$PATH
-          
-          # A. 初始化配置
-          rm -rf out && mkdir -p out
-          make O=out ARCH=arm64 CC=clang sdm845_defconfig
-          
-          if [ -f arch/arm64/configs/vendor/xiaomi/perseus.config ]; then
-            scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
-          fi
-          
-          yes "" | make O=out ARCH=arm64 CC=clang olddefconfig
-
-          # F. 执行编译 (忽略部分非致命错误继续尝试链接)
-          make -j$(nproc) O=out \
-                        ARCH=arm64 \
-                        CC=clang \
-                        CLANG_TRIPLE=aarch64-linux-gnu- \
-                        CROSS_COMPILE=aarch64-linux-android- \
-                        CROSS_COMPILE_ARM32=arm-linux-androideabi- \
-                        AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip \
-                        TECHPACK_AUDIO=y \
-                        KCFLAGS="-Wno-error -Wno-implicit-function-declaration -Wno-int-conversion -Wno-incompatible-pointer-types -I$(pwd)/techpack/audio/include -I$(pwd)/drivers/soc/qcom" || echo "编译过程中断，尝试检查产物..."
-
-      - name: 5. 诊断并打包 AnyKernel3
-        run: |
-          # 检查目录是否存在，不存在则创建空目录防止 find 报错
-          mkdir -p kernel-source/out/arch/arm64/boot/
-          
-          echo "=== 检查编译结果 ==="
-          ls -l kernel-source/out/arch/arm64/boot/
-          
-          git clone https://github.com/osm0sis/AnyKernel3.git
-          
-          # 拷贝内核文件
-          cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/ 2>/dev/null || \
-          cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/ 2>/dev/null || \
-          cp kernel-source/out/arch/arm64/boot/Image AnyKernel3/ 2>/dev/null || true
-
-          if [ -f AnyKernel3/Image* ]; then
-            cd AnyKernel3
-            sed -i 's/device.name1=maguro/device.name1=perseus/' anykernel.sh
-            sed -i 's/device.name2=toroplus/device.name2=mix3/' anykernel.sh
-            zip -r ../Mix3-Kernel-Final.zip *
-            echo "打包成功！"
-          else
-            echo "错误：未找到编译生成的内核镜像(Image)。请检查第4步的最后输出内容。"
-            exit 1
-          fi
-
-      - name: 6. 上传产物
-        if: always()
-        uses: actions/upload-artifact@v4
+          sudo apt-get update
+          sudo apt-get install -y bc bison build - essential curl flex git libncurses5 - dev libssl - dev make python3 wget
+      - name: Checkout kernel source
+        uses: actions/checkout@v2
         with:
-          name: Mix3-Kernel-Result
-          path: Mix3-Kernel-Final.zip
+          repository: LineageOS/android_kernel_xiaomi_sdm845
+          ref: lineage - 21
+          path: kernel
+
+      - name: Clone AOSP GCC 4.9 (混合定位)
+        run: |
+          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux - x86/arm/arm - linux - androideabi - 4.9 gcc_4.9
+          cd gcc_4.9
+          git checkout e9b2ab0932573a0ca90cad11ab75d9619f19c458
+
+      - name: Set up environment variables
+        run: |
+          export PATH=$PWD/gcc_4.9/bin:$PATH
+          export ARCH=arm64
+          export CROSS_COMPILE=arm - linux - androideabi -
+
+      - name: Configure kernel
+        run: |
+          cd kernel
+          cp arch/arm64/configs/sdm845_defconfig.config
+          cp arch/arm64/configs/vendor/xiaomi/perseus.config.config
+          make oldconfig
+
+      - name: Build kernel
+        run: |
+          cd kernel
+          make -j$(nproc)
+
+      - name: Upload kernel file as an artifact
+        uses: actions/upload - artifact@v4
+        with:
+          name: kernel - artifact
+          path: kernel/arch/arm64/boot/Image.gz  # 根据实际情况调整
