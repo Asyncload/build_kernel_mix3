@@ -34,7 +34,7 @@ jobs:
           cd kernel
           cp arch/arm64/configs/sdm845_defconfig ./.config
           cp arch/arm64/configs/vendor/xiaomi/perseus.config ./.config
-          make oldconfig
+          
       - name: Build kernel
         run: |
           cd kernel
