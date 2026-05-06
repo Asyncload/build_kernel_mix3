@@ -26,7 +26,7 @@ jobs:
         run: |
           cd kernel
           sed -i '469s/^pr_info/\/\//' fs/sdcardfs/main.c
-          echo "ccflags-y += -I\$(src)" >> drivers/clk/qcom/mdss/Kbuild
+          sed -i 's/CONFIG_MDSS=y/# CONFIG_MDSS is disabled/g' .config
 
       # 补丁2：find遍历批量替换，规避通配符报错
       - name: Patch 2 — Global fix all btfm_slim local headers
