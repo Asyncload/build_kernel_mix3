@@ -1,72 +1,87 @@
-name: Perseus Kernel Build (Main)
+name: LineageOS 21 Kernel Build (4.9.337)
 on:
   workflow_dispatch:
     inputs:
       branch:
-        description: "目标分支/标签（默认: lineage-21）"
+        description: "目标分支/标签 (默认: lineage-21)"
         required: true
         default: "lineage-21"
 
 jobs:
   setup:
     name: 环境准备
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     outputs:
-      kernel-branch: ${{ steps.checkout.outputs.ref }}  # 输出检出的分支名
+      kernel-branch: ${{ steps.checkout.outputs.ref }}  # 检出的分支/标签
+
     steps:
       - name: 检出代码仓库
         id: checkout
         uses: actions/checkout@v4
         with:
-          repository: LineageOS/android_kernel_xiaomi_sdm845  # 内核代码仓库
+          repository: LineageOS/android_kernel_xiaomi_sdm845
           ref: ${{ inputs.branch }}  # 使用输入的分支/标签
-          submodules: recursive  # 递归拉取子模块
+          submodules: recursive
 
       - name: 安装编译依赖
         run: |
           sudo apt-get update -y
           sudo apt-get install -y \
-            gcc-aarch64-linux-gnu \  # ARM64交叉编译器
-            aarch64-linux-android-14.0  # Android 14专用工具链
+            gcc-11-aarch64-linux-gnu \  # GCC 11 兼容内核4.9
+            aarch64-linux-android-14 \  # Android 14工具链
+            bc bison flex libssl-dev libelf-dev
+
+      - name: 配置编译器优先级
+        run: |
+          sudo update-alternatives --install /usr/bin/aarch64-linux-gnu-gcc aarch64-linux-gnu-gcc /usr/bin/aarch64-linux-gnu-gcc-11 100
 
   build:
     name: 内核编译
-    needs: setup  # 依赖环境准备完成
-    runs-on: ubuntu-latest
+    needs: setup
+    runs-on: ubuntu-22.04
+
     steps:
       - name: 验证内核版本
         run: |
-          # 检查实际编译版本是否为4.9.337
-          make kernelversion | grep "4.9.337" || exit 1
+          make kernelversion | grep "4.9.337" || exit 1  # 强制检查版本
+
+      - name: 解决GCC14兼容性问题
+        run: |
+          sed -i 's/__init/\/\*__init\*\//g' include/linux/init.h  # 临时注释冲突代码
 
       - name: 配置编译环境
         run: |
-          export ARCH=arm64  # 指定架构
-          export CROSS_COMPILE=aarch64-linux-android-  # 交叉编译器前缀
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-android-
+          export CFLAGS="-Wno-pointer-to-int-cast -Wno-error=strict-prototypes"
           make O=out sdm845_defconfig  # 使用设备专用配置
 
       - name: 执行编译
         run: |
-          # -j参数根据CPU核心数自动分配，建议留2核心给系统
-          make -j$(expr $(nproc) - 2) O=out V=1
+          make -j$(expr $(nproc) - 2) O=out V=1  # 保留2核心防止系统挂起
 
   package:
     name: 打包产物
-    needs: build  # 必须等待编译完成
-    runs-on: ubuntu-latest
+    needs: build
+    runs-on: ubuntu-22.04
+
     steps:
-      - name: 创建打包目录
+      - name: 创建输出目录
         run: |
-          mkdir -p artifacts/${{ github.sha }}  # 使用提交哈希作为版本标识
+          mkdir -p artifacts/${{ github.sha }}
 
       - name: 压缩内核镜像
         run: |
           tar -czvf artifacts/${{ github.sha }}/kernel-${{ needs.setup.outputs.kernel-branch }}.tar.gz \
-            out/arch/arm64/boot/Image.gz  # 内核镜像
+            out/arch/arm64/boot/Image.gz \  # 内核镜像
             out/System.map  # 符号表
 
-      - name: 上传到GitHub
+      - name: 上传制品到GitHub
         uses: actions/upload-artifact@v3
         with:
-          name: kernel-${{ needs.setup.outputs.kernel-branch }}  # 制品名称
-          path: artifacts/${{ github.sha }}  # 打包路径
+          name: kernel-${{ needs.setup.outputs.kernel-branch }}
+          path: artifacts/${{ github.sha }}
+
+      - name: 清理临时文件
+        run: |
+          rm -rf out
