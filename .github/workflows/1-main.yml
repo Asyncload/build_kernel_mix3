@@ -15,8 +15,8 @@ jobs:
 
       - name: Initialize
         run: |
-          mkdir -p lineageos_build
-          cd lineageos_build
+          mkdir -p build_dir
+          cd build_dir
 
       - name: Add Dependencies
         run: |
@@ -32,19 +32,22 @@ jobs:
 
       - name: Configure Compilation Environment
         run: |
+          rm -rf out && mkdir -p out
           make O=out ARCH=arm64 CC=clang sdm845_defconfig
-          yes "" | make O=out ARCH=arm64 CC=clang olddefconfig
+          if [ -f arch/arm64/configs/vendor/xiaomi/perseus.config ]; then
+            scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
+          fi
 
       - name: Compile
         run: |
-          make -j$(nproc)
+          make -j$(nproc) O=out ARCH=arm64 CC=clang V=1
 
       - name: Package
         run: |
-          make modules_install
-          find. -name '*.ko' -exec cp {}../lineageos_build/ \;
+          make modules_install O=out
+          find. -name '*.ko' -exec cp {} out/ \;
           cd..
-          tar -czvf kernel_package.tar.gz lineageos_build
+          tar -czvf kernel_package.tar.gz build_dir
 
       - name: Upload
         uses: actions/upload-artifact@v4
