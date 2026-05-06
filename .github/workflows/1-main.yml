@@ -32,8 +32,8 @@ jobs:
       - name: Configure kernel
         run: |
           cd kernel
-          cp arch/arm64/configs/sdm845_defconfig
-          cp arch/arm64/configs/vendor/xiaomi/perseus.config
+          cp arch/arm64/configs/sdm845_defconfig ./.config
+          cp arch/arm64/configs/vendor/xiaomi/perseus.config ./.config
           make oldconfig
       - name: Build kernel
         run: |
