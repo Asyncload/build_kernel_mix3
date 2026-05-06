@@ -1,7 +1,5 @@
-name: LineageOS 21 Kernel Build (Perseus)
+name: 给我出内核 (Perseus)
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       branch:
@@ -13,25 +11,15 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      # 1. 初始化环境
-      - name: Setup Git
-        run: |
-          git config --global user.email "actions@github.com"
-          git config --global user.name "GitHub Actions"
-          git config --global --add safe.directory /github/workspace
-
-      # 2. 安装系统依赖
-      - name: Install dependencies
+      # 1. 安装官方推荐工具链
+      - name: Install official toolchain
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y --no-install-recommends \
-            bc bison build-essential ccache curl flex g++-multilib gcc-multilib \
-            git gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev \
-            lib32z1-dev liblz4-tool libncurses5-dev libsdl1.2-dev libssl-dev \
-            libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools \
-            xsltproc zip zlib1g-dev openjdk-11-jdk
+          sudo apt-get install -y \
+            aarch64-linux-android-14 \  # 官方指定工具链
+            openjdk-11-jdk
 
-      # 3. 检出代码
+      # 2. 检出代码
       - name: Checkout source
         uses: actions/checkout@v4
         with:
@@ -39,37 +27,27 @@ jobs:
           ref: ${{ inputs.branch }}
           submodules: recursive
 
-      # 4. 安装工具链（修复版）
-      - name: Install toolchain
-        run: |
-          # 优先使用镜像加速下载
-          MIRROR_URL="https://mirrors.bfsu.edu.cn/git-repo/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-14.0"
-          if wget -q --spider "$MIRROR_URL/+archive/master.tar.gz"; then
-            wget -qO- "$MIRROR_URL/+archive/master.tar.gz" | tar -xz
-          else
-            wget -qO- "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-14.0/+archive/master.tar.gz" | tar -xz
-          fi
-          export PATH=$PWD/aarch64-linux-android-14.0/bin:$PATH
-
-      # 5. 配置编译器优先级
-      - name: Set GCC priority
-        run: |
-          sudo update-alternatives --install /usr/bin/aarch64-linux-gnu-gcc aarch64-linux-gnu-gcc /usr/bin/aarch64-linux-gnu-gcc-11 100
-
-      # 6. 编译内核
-      - name: Configure build
+      # 3. 配置编译环境
+      - name: Setup environment
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-android-
           make O=out sdm845_defconfig
 
-      - name: Compile kernel
+      # 4. 执行编译
+      - name: Build kernel
         run: |
-          make -j$(expr $(nproc) - 2) O=out V=1 \
+          make -j$(nproc) O=out V=1 \
             KBUILD_BUILD_USER=github-actions \
             KBUILD_BUILD_HOST=ubuntu-latest
 
-      # 7. 打包并上传制品
+      # 5. 验证产物
+      - name: Verify build
+        run: |
+          file out/arch/arm64/boot/Image.gz
+          make kernelversion | grep "4.9.337"
+
+      # 6. 打包上传
       - name: Create artifacts
         run: |
           mkdir -p artifacts
@@ -83,9 +61,3 @@ jobs:
           name: lineageos-perseus-kernel
           path: artifacts/
           retention-days: 30
-
-      # 8. 清理临时文件
-      - name: Cleanup
-        run: |
-          rm -rf out
-          sudo apt-get autoremove -y
