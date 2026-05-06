@@ -52,7 +52,9 @@ jobs:
       - name: Configure kernel
         run: |
           cd kernel
-          make mrproper
+          make olddefconfig
+          make scripts
+          make prepare
           cp arch/arm64/configs/sdm845_defconfig .config
           cat arch/arm64/configs/vendor/xiaomi/perseus.config >> .config
           make olddefconfig
