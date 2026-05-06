@@ -1,63 +1,78 @@
-name: LineageOS Perseus Kernel Build
-on: workflow_dispatch
+name: LineageOS 21 Kernel Build (Perseus)
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Target branch/tag (default: lineage-21)"
+        required: true
+        default: "lineage-21"
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      # 1. 初始化
-      - name: 初始化Git仓库
+      # 1. 初始化环境
+      - name: Setup Git
         run: |
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
+          git config --global --add safe.directory /github/workspace
 
-      # 2. 添加依赖
-      - name: 安装系统依赖
+      # 2. 安装系统依赖
+      - name: Install dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y \
+          sudo apt-get install -y --no-install-recommends \
             bc bison build-essential ccache curl flex g++-multilib gcc-multilib \
             git gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev \
             lib32z1-dev liblz4-tool libncurses5-dev libsdl1.2-dev libssl-dev \
             libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools \
             xsltproc zip zlib1g-dev openjdk-11-jdk
 
-      # 3. 下载源码
-      - name: 检出内核源码
+      # 3. 检出代码
+      - name: Checkout source
         uses: actions/checkout@v4
         with:
           repository: LineageOS/android_kernel_xiaomi_sdm845
-          ref: lineage-21
+          ref: ${{ inputs.branch }}
           submodules: recursive
 
       # 4. 安装编译工具链
-      - name: 安装Android工具链
+      - name: Install Android toolchain
         run: |
           wget -qO- https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-14.0/+archive/master.tar.gz | tar -xz
           export PATH=$PWD/aarch64-linux-android-14.0/bin:$PATH
 
       # 5. 编译内核
-      - name: 配置编译环境
+      - name: Configure build environment
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-android-
+          export KBUILD_BUILD_USER=github-actions
+          export KBUILD_BUILD_HOST=ubuntu-latest
           make O=out sdm845_defconfig
 
-      - name: 执行编译
+      - name: Compile kernel
         run: |
-          make -j$(nproc) O=out V=1 \
-            KBUILD_BUILD_USER=github-actions \
-            KBUILD_BUILD_HOST=ubuntu-latest
+          make -j$(nproc) O=out V=1
 
-      # 6. 打包上传
-      - name: 创建制品包
+      # 6. 打包并上传
+      - name: Create artifacts
         run: |
-          tar -czvf kernel-lineage-21.tar.gz \
+          mkdir -p artifacts
+          tar -czvf artifacts/kernel-${{ inputs.branch }}.tar.gz \
             out/arch/arm64/boot/Image.gz \
             out/System.map
 
-      - name: 上传到GitHub
-        uses: actions/upload-artifact@v3
+      - name: Upload artifacts (v4)
+        uses: actions/upload-artifact@v4
         with:
           name: lineageos-perseus-kernel
-          path: kernel-lineage-21.tar.gz
+          path: artifacts/
+          retention-days: 30
+
+      # 7. 清理临时文件
+      - name: Cleanup
+        run: |
+          rm -rf out
+          sudo apt-get autoremove -y
