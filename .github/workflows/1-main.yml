@@ -32,6 +32,7 @@ jobs:
         run: |
           wget https://github.com/LineageOS/android_kernel_xiaomi_sdm845/raw/lineage-21/arch/arm64/configs/vendor/xiaomi/perseus.config
           mv perseus.config config
+          make mrproper
           make oldconfig
 
       - name: Compile
