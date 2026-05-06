@@ -1,28 +1,28 @@
-#打包上传
-# Package & upload
-name: Package
+name: Package Artifact
 on:
-  workflow_call:
+  workflow_call:  # 供主工作流调用
 
 jobs:
   package:
     runs-on: ubuntu-latest
+    needs: build  # 必须等待编译完成
     steps:
-      - name: Restore code cache
-        uses: actions/cache@v3
-        with:
-          path: .
-          key: ${{ runner.os }}-code-${{ github.sha }}
-      - name: Restore kernel cache
-        uses: actions/cache@v3
-        with:
-          path: out/arch/arm64/boot
-          key: ${{ runner.os }}-kernel-${{ github.sha }}
-      - name: Package boot image
+      - name: Create output directory  # 创建打包目录
         run: |
-          ./mkbootimg --kernel out/arch/arm64/boot/Image.gz-dtb --output perseus-boot.img
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+          mkdir -p artifacts/${{ github.sha }}
+
+      - name: Compress kernel image  # 压缩内核镜像
+        run: |
+          tar -czvf artifacts/${{ github.sha }}/kernel-${{ needs.build.outputs.kernel-branch }}.tar.gz \
+            out/arch/arm64/boot/Image.gz \
+            out/System.map
+
+      - name: Upload artifact to GitHub  # 上传制品到GitHub
+        uses: actions/upload-artifact@v3
         with:
-          name: perseus-kernel
-          path: perseus-boot.img
+          name: kernel-${{ needs.build.outputs.kernel-branch }}
+          path: artifacts/${{ github.sha }}
+
+      - name: Cleanup temporary files  # 清理临时文件
+        run: |
+          rm -rf out
