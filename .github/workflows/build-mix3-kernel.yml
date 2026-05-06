@@ -59,10 +59,12 @@ jobs:
           make prepare
           cp arch/arm64/configs/sdm845_defconfig .config
           cat arch/arm64/configs/vendor/xiaomi/perseus.config >> .config
-          make olddefconfig
+          
          
-          sed -i 's/^CONFIG_MDSS=y/CONFIG_MDSS=n/' .config
-          sed -i 's/obj-$(CONFIG_MDSS) += mdss//' drivers/clk/qcom/Makefile
+          # 配置层面禁用 MDSS
+           sed -i 's/^CONFIG_MDSS=y/CONFIG_MDSS=n/' .config
+           # 物理屏蔽编译入口，彻底禁止编译 mdss 目录
+           sed -i 's/^obj-.*mdss/#&/' drivers/clk/qcom/Makefile
 
       - name: Build kernel
         run: |
