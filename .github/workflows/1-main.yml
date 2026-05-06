@@ -13,34 +13,48 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y bc bison build-essential curl flex git libncurses5-dev libssl-dev make python3 wget
+
       - name: Checkout kernel source
         uses: actions/checkout@v2
         with:
           repository: LineageOS/android_kernel_xiaomi_sdm845
           ref: lineage-21
           path: kernel
-      - name: Clone AOSP GCC 4.9 (混合定位)
+
+      - name: Clone AOSP GCC 4.9
         run: |
           git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 gcc_4.9
           cd gcc_4.9
           git checkout e9b2ab0932573a0ca90cad11ab75d9619f19c458
+
       - name: Set up environment variables
         run: |
           export PATH=$PWD/gcc_4.9/bin:$PATH
           export ARCH=arm64
           export CROSS_COMPILE=arm-linux-androideabi-
-      - name: Configure kernel
+          echo "PATH=$PATH" >> $GITHUB_ENV
+          echo "ARCH=$ARCH" >> $GITHUB_ENV
+          echo "CROSS_COMPILE=$CROSS_COMPILE" >> $GITHUB_ENV
+
+      - name: Configure kernel (Fix interactive config error)
         run: |
           cd kernel
-          cp arch/arm64/configs/sdm845_defconfig ./.config
-          cp arch/arm64/configs/vendor/xiaomi/perseus.config ./.config
-          
+          # 清理旧配置
+          make mrproper
+          # 加载默认公版配置
+          cp arch/arm64/configs/sdm845_defconfig .config
+          # 叠加小米Mix3 专属配置
+          cat arch/arm64/configs/vendor/xiaomi/perseus.config >> .config
+          # 核心：静默补全所有NEW配置，无交互
+          make olddefconfig
+
       - name: Build kernel
         run: |
           cd kernel
           make -j$(nproc)
+
       - name: Upload kernel file as an artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-artifact
-          path: kernel/arch/arm64/boot/Image.gz  # 根据实际情况调整
+          name: mix3-kernel-artifact
+          path: kernel/arch/arm64/boot/Image.gz
