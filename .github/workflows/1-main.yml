@@ -1,87 +1,63 @@
-name: LineageOS 21 Kernel Build (4.9.337)
-on:
-  workflow_dispatch:
-    inputs:
-      branch:
-        description: "目标分支/标签 (默认: lineage-21)"
-        required: true
-        default: "lineage-21"
+name: LineageOS Perseus Kernel Build
+on: workflow_dispatch
 
 jobs:
-  setup:
-    name: 环境准备
+  build:
     runs-on: ubuntu-22.04
-    outputs:
-      kernel-branch: ${{ steps.checkout.outputs.ref }}  # 检出的分支/标签
-
     steps:
-      - name: 检出代码仓库
-        id: checkout
-        uses: actions/checkout@v4
-        with:
-          repository: LineageOS/android_kernel_xiaomi_sdm845
-          ref: ${{ inputs.branch }}  # 使用输入的分支/标签
-          submodules: recursive
+      # 1. 初始化
+      - name: 初始化Git仓库
+        run: |
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
 
-      - name: 安装编译依赖
+      # 2. 添加依赖
+      - name: 安装系统依赖
         run: |
           sudo apt-get update -y
           sudo apt-get install -y \
-            gcc-11-aarch64-linux-gnu \  # GCC 11 兼容内核4.9
-            aarch64-linux-android-14 \  # Android 14工具链
-            bc bison flex libssl-dev libelf-dev
+            bc bison build-essential ccache curl flex g++-multilib gcc-multilib \
+            git gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev \
+            lib32z1-dev liblz4-tool libncurses5-dev libsdl1.2-dev libssl-dev \
+            libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools \
+            xsltproc zip zlib1g-dev openjdk-11-jdk
 
-      - name: 配置编译器优先级
+      # 3. 下载源码
+      - name: 检出内核源码
+        uses: actions/checkout@v4
+        with:
+          repository: LineageOS/android_kernel_xiaomi_sdm845
+          ref: lineage-21
+          submodules: recursive
+
+      # 4. 安装编译工具链
+      - name: 安装Android工具链
         run: |
-          sudo update-alternatives --install /usr/bin/aarch64-linux-gnu-gcc aarch64-linux-gnu-gcc /usr/bin/aarch64-linux-gnu-gcc-11 100
+          wget -qO- https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-14.0/+archive/master.tar.gz | tar -xz
+          export PATH=$PWD/aarch64-linux-android-14.0/bin:$PATH
 
-  build:
-    name: 内核编译
-    needs: setup
-    runs-on: ubuntu-22.04
-
-    steps:
-      - name: 验证内核版本
-        run: |
-          make kernelversion | grep "4.9.337" || exit 1  # 强制检查版本
-
-      - name: 解决GCC14兼容性问题
-        run: |
-          sed -i 's/__init/\/\*__init\*\//g' include/linux/init.h  # 临时注释冲突代码
-
+      # 5. 编译内核
       - name: 配置编译环境
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-android-
-          export CFLAGS="-Wno-pointer-to-int-cast -Wno-error=strict-prototypes"
-          make O=out sdm845_defconfig  # 使用设备专用配置
+          make O=out sdm845_defconfig
 
       - name: 执行编译
         run: |
-          make -j$(expr $(nproc) - 2) O=out V=1  # 保留2核心防止系统挂起
+          make -j$(nproc) O=out V=1 \
+            KBUILD_BUILD_USER=github-actions \
+            KBUILD_BUILD_HOST=ubuntu-latest
 
-  package:
-    name: 打包产物
-    needs: build
-    runs-on: ubuntu-22.04
-
-    steps:
-      - name: 创建输出目录
+      # 6. 打包上传
+      - name: 创建制品包
         run: |
-          mkdir -p artifacts/${{ github.sha }}
+          tar -czvf kernel-lineage-21.tar.gz \
+            out/arch/arm64/boot/Image.gz \
+            out/System.map
 
-      - name: 压缩内核镜像
-        run: |
-          tar -czvf artifacts/${{ github.sha }}/kernel-${{ needs.setup.outputs.kernel-branch }}.tar.gz \
-            out/arch/arm64/boot/Image.gz \  # 内核镜像
-            out/System.map  # 符号表
-
-      - name: 上传制品到GitHub
+      - name: 上传到GitHub
         uses: actions/upload-artifact@v3
         with:
-          name: kernel-${{ needs.setup.outputs.kernel-branch }}
-          path: artifacts/${{ github.sha }}
-
-      - name: 清理临时文件
-        run: |
-          rm -rf out
+          name: lineageos-perseus-kernel
+          path: kernel-lineage-21.tar.gz
