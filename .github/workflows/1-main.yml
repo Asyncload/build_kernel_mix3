@@ -37,10 +37,16 @@ jobs:
           ref: ${{ inputs.branch }}
           submodules: recursive
 
-      # 4. 安装编译工具链
+      # 4. 安装编译工具链（修复版）
       - name: Install Android toolchain
         run: |
-          wget -qO- https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-14.0/+archive/master.tar.gz | tar -xz
+          # 优先使用镜像加速下载
+          MIRROR_URL="https://mirrors.bfsu.edu.cn/git-repo/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-14.0"
+          if wget -q --spider "$MIRROR_URL/+archive/master.tar.gz"; then
+            wget -qO- "$MIRROR_URL/+archive/master.tar.gz" | tar -xz
+          else
+            wget -qO- "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-14.0/+archive/master.tar.gz" | tar -xz
+          fi
           export PATH=$PWD/aarch64-linux-android-14.0/bin:$PATH
 
       # 5. 编译内核
