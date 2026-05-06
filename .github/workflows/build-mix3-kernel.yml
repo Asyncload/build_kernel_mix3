@@ -62,6 +62,7 @@ jobs:
           make olddefconfig
          
           sed -i 's/^CONFIG_MDSS=y/CONFIG_MDSS=n/' .config
+          sed -i 's/obj-$(CONFIG_MDSS) += mdss//' drivers/clk/qcom/Makefile
 
       - name: Build kernel
         run: |
