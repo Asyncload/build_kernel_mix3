@@ -48,10 +48,11 @@ jobs:
       - name: Build kernel
         run: |
           cd kernel
-          make -j$(nproc)
+          # 外部追加头文件搜索路径，不修改任何源码
+          make -j$(nproc) EXTRA_CFLAGS="-I$(srctree)/drivers/bluetooth"
 
       - name: Upload kernel artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Mix3-GCC5.1-Kernel
+          name: Mix3-Kernel
           path: kernel/arch/arm64/boot/Image.gz
