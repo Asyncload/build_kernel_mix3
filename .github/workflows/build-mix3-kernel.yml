@@ -32,6 +32,7 @@ jobs:
         run: |
           cd kernel/drivers/bluetooth
           find . -maxdepth 1 -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's/<\(btfm_slim.*\.h\)>/"\1"/g' {} \;
+          sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH drivers/clk/qcom/mdss|' drivers/clk/qcom/mdss/mdss_pll_trace.h
 
       # 下载你指定的 Linaro GCC 5.1
       - name: Download & extract GCC 5.1 (Linaro official)
