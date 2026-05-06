@@ -1,4 +1,4 @@
-name: LineageOS Kernel Build for Perseus
+name: LineageOS Kernel Build for Xiaomi Mix 3
 on:
   push:
     branches:
@@ -23,23 +23,15 @@ jobs:
           sudo apt-get install -y lib32ncurses5-dev || sudo apt-get install -y lib32ncursesw5-dev
           wget https://archive.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2_amd64.deb && sudo dpkg -i libtinfo5_6.3-2_amd64.deb && rm -f libtinfo5_6.3-2_amd64.deb
 
-      - name: Install Compilation Tools
+      - name: Clone Repository
         run: |
-          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9
-          cd arm-linux-androideabi-4.9
-          git checkout e9b2ab0932573a0ca90cad11ab75d9619f19c458
-          export PATH=$PWD/bin:$PATH
-
-      - name: Download Kernel Source
-        run: |
-          repo init -u https://github.com/LineageOS/android_kernel_xiaomi_perseus -b lineage-21
-          repo sync
-          cd android_kernel_xiaomi_perseus
+          git clone -b lineage-21 https://github.com/LineageOS/android_kernel_xiaomi_sdm845.git
+          cd android_kernel_xiaomi_sdm845
 
       - name: Configure Compilation Environment
         run: |
-          wget https://github.com/LineageOS/android_kernel_xiaomi_sdm845/raw/lineage-21/arch/arm64/configs/vendor/xiaomi/lineageos_perseus_defconfig
-          mv lineageos_perseus_defconfig.config
+          wget https://github.com/LineageOS/android_kernel_xiaomi_sdm845/raw/lineage-21/arch/arm64/configs/vendor/xiaomi/mix3_defconfig
+          mv mix3_defconfig.config
           make oldconfig
 
       - name: Compile
