@@ -30,8 +30,8 @@ jobs:
 
       - name: Configure Compilation Environment
         run: |
-          wget https://github.com/LineageOS/android_kernel_xiaomi_sdm845/raw/lineage-21/arch/arm64/configs/vendor/xiaomi/mix3_defconfig
-          mv mix3_defconfig.config
+          wget https://github.com/LineageOS/android_kernel_xiaomi_sdm845/raw/lineage-21/arch/arm64/configs/vendor/xiaomi/perseus.config
+          mv perseus.config config
           make oldconfig
 
       - name: Compile
