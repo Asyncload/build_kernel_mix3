@@ -22,11 +22,12 @@ jobs:
           path: kernel
 
       # 生成并应用补丁：1. sdcardfs 注释报错行 2. btfm_slim.h 尖括号改双引号
-      - name: Patch 1 — Comment sdcardfs pr_info line
+      - name: Patch  Comment sdcardfs pr_info line
         run: |
           cd kernel
           sed -i '469s/^pr_info/\/\//' fs/sdcardfs/main.c
           sed -i '26s/<btfm_slim.h>/"btfm_slim.h"/' drivers/bluetooth/btfm_slim.c
+          sed -i '27s/<btfm_slim_wcn3990.h>/"btfm_slim_wcn3990.h"/' drivers/bluetooth/btfm_slim.c
 
       # 下载你指定的 Linaro GCC 5.1
       - name: Download & extract GCC 5.1 (Linaro official)
