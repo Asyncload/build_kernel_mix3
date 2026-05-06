@@ -26,8 +26,14 @@ jobs:
         run: |
           cd kernel
           sed -i '469s/^pr_info/\/\//' fs/sdcardfs/main.c
+      # 修复.h文件路径  
+      - name: Fix all trace include paths in drivers
+        run: |
+          cd kernel
+          #修复 mdss_pll_trace.h
           sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/clk/qcom/mdss|' drivers/clk/qcom/mdss/mdss_pll_trace.h
-          grep 'TRACE_INCLUDE_PATH' drivers/clk/qcom/mdss/mdss_pll_trace.h
+          #修复 kgsl_trace.h
+          sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/gpu/msm|' drivers/gpu/msm/kgsl_trace.h
           
 
       # 补丁2：find遍历批量替换，规避通配符报错
