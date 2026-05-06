@@ -1,31 +1,33 @@
-#环境与源码
-name: Setup
+name: Setup Environment
 on:
-  workflow_call:
+  workflow_call:  # 供其他工作流调用
 
 jobs:
   setup:
     runs-on: ubuntu-latest
+    outputs:
+      kernel-branch: ${{ steps.checkout.outputs.ref }}  # 输出检出的分支名
     steps:
-      - name: Checkout code
+      - name: Checkout source code  # 检出代码仓库
+        id: checkout
         uses: actions/checkout@v4
         with:
           repository: LineageOS/android_kernel_xiaomi_sdm845
-          ref: lineage-21
+          ref: lineage-21  # 固定分支（可改为变量）
           submodules: recursive
 
-      - name: Install tools
+      - name: Install build dependencies  # 安装编译工具
         run: |
           sudo apt-get update -y
           sudo apt-get install -y \
             gcc-aarch64-linux-gnu \
             make bc bison flex libssl-dev \
-            aarch64-linux-android-14.0  # 所有工具集中安装
+            aarch64-linux-android-14.0
 
-      - name: Cache environment
+      - name: Cache environment  # 缓存环境工具
         uses: actions/cache@v3
         with:
           path: |
             /usr/bin/aarch64-linux-android-*
-            .
+            .github
           key: ${{ runner.os }}-env-${{ github.sha }}
