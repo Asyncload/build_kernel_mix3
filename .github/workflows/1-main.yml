@@ -31,9 +31,10 @@ jobs:
 
       - name: Configure Compilation Environment
         run: |
-          wget https://github.com/LineageOS/android_kernel_xiaomi_sdm845/raw/lineage-21/arch/arm64/configs/vendor/xiaomi/perseus.config
-          mv perseus.config config
+          wget https://github.com/LineageOS/android_kernel_xiaomi_sdm845/raw/lineage-21/arch/arm64/configs/sdm845_defconfig
+          mv sdm845_defconfig config
           make O=out ARCH=arm64 CC=clang sdm845_defconfig
+          wget https://github.com/LineageOS/android_kernel_xiaomi_sdm845/raw/lineage-21/arch/arm64/configs/vendor/xiaomi/perseus.config
           if [ -f arch/arm64/configs/vendor/xiaomi/perseus.config ]; then
             scripts/kconfig/merge_config.sh -O out out/.config arch/arm64/configs/vendor/xiaomi/perseus.config
           fi
