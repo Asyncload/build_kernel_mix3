@@ -12,7 +12,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential curl flex git libncurses5-dev libssl-dev make python3 wget
+          sudo apt-get install -y bc bison build-essential curl flex git libncurses5-dev libssl-dev make python3 wget zip
 
       - name: Checkout kernel source
         uses: actions/checkout@v2
@@ -21,40 +21,42 @@ jobs:
           ref: lineage-21
           path: kernel
 
-      - name: Clone AOSP GCC 4.9
+      # 【关键修复】改用 ARM64 专用 GCC 4.9，不再用32位arm编译器
+      - name: Clone AOSP GCC 4.9 AARCH64
         run: |
-          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 gcc_4.9
+          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 gcc_4.9
           cd gcc_4.9
           git checkout e9b2ab0932573a0ca90cad11ab75d9619f19c458
 
-      - name: Set up environment variables
+      - name: Set up env
         run: |
           export PATH=$PWD/gcc_4.9/bin:$PATH
           export ARCH=arm64
-          export CROSS_COMPILE=arm-linux-androideabi-
+          export CROSS_COMPILE=aarch64-linux-android-
+          # 绕过内核编译器严格版本检查
+          export KBUILD_IGNORE_COMPILER_VERSION=1
           echo "PATH=$PATH" >> $GITHUB_ENV
           echo "ARCH=$ARCH" >> $GITHUB_ENV
           echo "CROSS_COMPILE=$CROSS_COMPILE" >> $GITHUB_ENV
 
-      - name: Configure kernel (Fix interactive config error)
+      - name: Configure kernel
         run: |
           cd kernel
-          # 清理旧配置
           make mrproper
-          # 加载默认公版配置
+          # 加载通用配置 + 机型配置
           cp arch/arm64/configs/sdm845_defconfig .config
-          # 叠加小米Mix3 专属配置
           cat arch/arm64/configs/vendor/xiaomi/perseus.config >> .config
-          # 核心：静默补全所有NEW配置，无交互
+          # 静默配置、关闭编译器版本检查
           make olddefconfig
+          sed -i 's/CONFIG_CC_VERSION_CHECK=y/CONFIG_CC_VERSION_CHECK=n/' .config
 
       - name: Build kernel
         run: |
           cd kernel
           make -j$(nproc)
 
-      - name: Upload kernel file as an artifact
+      - name: Upload kernel artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mix3-kernel-artifact
+          name: Mix3-Perseus-Kernel
           path: kernel/arch/arm64/boot/Image.gz
