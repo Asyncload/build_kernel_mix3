@@ -12,7 +12,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential curl flex git libncurses5-dev libssl-dev make python3 wget zip
+          sudo apt-get install -y bc bison build-essential curl flex git libncurses5-dev libssl-dev make python3 wget zip patch
 
       - name: Checkout kernel source
         uses: actions/checkout@v2
@@ -21,7 +21,14 @@ jobs:
           ref: lineage-21
           path: kernel
 
-      # 只用你提供的官方 Linaro GCC 5.1 下载链接
+      # 生成并应用补丁：1. sdcardfs 注释报错行 2. btfm_slim.h 尖括号改双引号
+      - name: Patch 1 — Comment sdcardfs pr_info line
+        run: |
+          cd kernel
+          sed -i '469s/^pr_info/\/\//' fs/sdcardfs/main.c
+          sed -i '26s/<btfm_slim.h>/"btfm_slim.h"/' drivers/bluetooth/btfm_slim.c
+
+      # 下载你指定的 Linaro GCC 5.1
       - name: Download & extract GCC 5.1 (Linaro official)
         run: |
           wget https://releases-ie.linaro.org/components/toolchain/binaries/5.1-2015.08/aarch64-linux-gnu/gcc-linaro-5.1-2015.08-x86_64_aarch64-linux-gnu.tar.xz
@@ -48,11 +55,10 @@ jobs:
       - name: Build kernel
         run: |
           cd kernel
-          # 外部追加头文件搜索路径，不修改任何源码
-          make -j$(nproc) EXTRA_CFLAGS="-I$(srctree)/drivers/bluetooth"
+          make -j$(nproc)
 
       - name: Upload kernel artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Mix3-Kernel
+          name: Mix3-GCC5.1-Kernel
           path: kernel/arch/arm64/boot/Image.gz
