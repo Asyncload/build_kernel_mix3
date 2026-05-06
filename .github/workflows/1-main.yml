@@ -1,65 +1,59 @@
-name: 给我出内核 (Perseus)
+name: LineageOS Kernel Build for Perseus
 on:
   push:
-   branches: [ main ]
-  workflow_dispatch:
-    inputs:
-      branch:
-        description: "Target branch/tag (default: lineage-21)"
-        required: true
-        default: "lineage-21"
+    branches:
+      - main
 
 jobs:
-  build:
-    runs-on: ubuntu-22.04
+  build_kernel:
+    runs-on: ubuntu-latest
     steps:
-      # 1. 安装官方推荐工具链
-      - name: Install official toolchain
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y \
-            aarch64-linux-android-14 \  # 官方指定工具链
-            openjdk-11-jdk
+      - name: Checkout Repository
+        uses: actions/checkout@v2
 
-      # 2. 检出代码
-      - name: Checkout source
-        uses: actions/checkout@v4
+      - name: Initialize
+        run: |
+          mkdir -p lineageos_build
+          cd lineageos_build
+
+      - name: Add Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses5-dev libreadline-dev libssl-dev libxml2-dev lzop openjdk-11-jdk pngcrush python python3 python3-pip repo rsync schedtool squashfs-tools zip zlib1g-dev
+
+      - name: Install Compilation Tools
+        run: |
+          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9
+          cd arm-linux-androideabi-4.9
+          git checkout e9b2ab0932573a0ca90cad11ab75d9619f19c458
+          export PATH=$PWD/bin:$PATH
+
+      - name: Download Kernel Source
+        run: |
+          repo init -u https://github.com/LineageOS/android_kernel_xiaomi_perseus -b lineage-21
+          repo sync
+          cd android_kernel_xiaomi_perseus
+
+      - name: Configure Compilation Environment
+        run: |
+          wget https://github.com/LineageOS/android_kernel_xiaomi_sdm845/raw/lineage-21/arch/arm64/configs/vendor/xiaomi/lineageos_perseus_defconfig
+          mv lineageos_perseus_defconfig.config
+          make oldconfig
+
+      - name: Compile
+        run: |
+          make -j$(nproc)
+
+      - name: Package
+        run: |
+          # 这里需要根据实际情况添加打包命令，例如
+          make modules_install
+          find. -name '*.ko' -exec cp {}../lineageos_build/ \;
+          cd..
+          tar -czvf kernel_package.tar.gz lineageos_build
+
+      - name: Upload
+        uses: actions/upload-artifact@v2
         with:
-          repository: LineageOS/android_kernel_xiaomi_sdm845
-          ref: ${{ inputs.branch }}
-          submodules: recursive
-
-      # 3. 配置编译环境
-      - name: Setup environment
-        run: |
-          export ARCH=arm64
-          export CROSS_COMPILE=aarch64-linux-android-
-          make O=out sdm845_defconfig
-
-      # 4. 执行编译
-      - name: Build kernel
-        run: |
-          make -j$(nproc) O=out V=1 \
-            KBUILD_BUILD_USER=github-actions \
-            KBUILD_BUILD_HOST=ubuntu-latest
-
-      # 5. 验证产物
-      - name: Verify build
-        run: |
-          file out/arch/arm64/boot/Image.gz
-          make kernelversion | grep "4.9.337"
-
-      # 6. 打包上传
-      - name: Create artifacts
-        run: |
-          mkdir -p artifacts
-          tar -czvf artifacts/kernel-${{ inputs.branch }}.tar.gz \
-            out/arch/arm64/boot/Image.gz \
-            out/System.map
-
-      - name: Upload artifacts (v4)
-        uses: actions/upload-artifact@v4
-        with:
-          name: lineageos-perseus-kernel
-          path: artifacts/
-          retention-days: 30
+          name: lineageos-kernel-package
+          path: kernel_package.tar.gz
