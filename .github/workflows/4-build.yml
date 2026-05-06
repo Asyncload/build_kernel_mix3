@@ -1,4 +1,4 @@
-#正式编译
+# 正式编译
 # Compile kernel
 name: Build
 on:
@@ -13,21 +13,29 @@ jobs:
         with:
           path: .
           key: ${{ runner.os }}-code-${{ github.sha }}
+
       - name: Install dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y gcc-aarch64-linux-gnu make bc bison flex libssl-dev
+          # 安装正确的Android交叉编译器（修复“aarch64-linux-android-gcc不存在”问题）
+          sudo apt-get install -y gcc-aarch64-linux-gnu make bc bison flex libssl-dev aarch64-linux-android-14.0
+
       - name: Validate config files
         run: |
           if [ ! -f arch/arm64/configs/sdm845_defconfig ]; then exit 1; fi
           if [ ! -f arch/arm64/configs/vendor/xiaomi/perseus.config ]; then exit 1; fi
+
       - name: Compile kernel
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-android-
-          make O=out sdm845_defconfig
+          # 使用olddefconfig初始化配置（修复配置合并冲突）
+          make O=out olddefconfig
           cat arch/arm64/configs/vendor/xiaomi/perseus.config >> out/.config
+          # 静默处理配置冲突（修复“Console input/output is redirected”问题）
+          make -C out oldconfig
           make -j$(nproc) O=out V=1
+
       - name: Cache kernel artifact
         uses: actions/cache@v3
         with:
