@@ -21,14 +21,14 @@ jobs:
           ref: lineage-21
           path: kernel
 
-      # 官方 GCC 5.4.1（最接近 5.3.1 的官方版本）
-      - name: Clone AOSP GCC 5.4.1 aarch64
+      # ✅ 官方 GCC 7.3.1（稳定可靠）
+      - name: Clone AOSP GCC 7.3.1 aarch64
         run: |
-          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-5.4.1 gcc_5.4.1
+          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-7.3.1 gcc_7.3.1
 
       - name: Set up environment
         run: |
-          export PATH=$PWD/gcc_5.4.1/bin:$PATH
+          export PATH=$PWD/gcc_7.3.1/bin:$PATH
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-android-
           echo "PATH=$PATH" >> $GITHUB_ENV
