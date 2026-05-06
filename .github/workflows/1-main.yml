@@ -21,34 +21,27 @@ jobs:
           ref: lineage-21
           path: kernel
 
-      # 你指定的官方 GCC 4.9 快照
-      - name: Clone AOSP GCC 4.9 aarch64
+      # 官方 GCC 5.4.1（最接近 5.3.1 的官方版本）
+      - name: Clone AOSP GCC 5.4.1 aarch64
         run: |
-          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 gcc_4.9
-          cd gcc_4.9
-          git checkout 357ead66eff30a77b2b752595d4df09fb56e23f0
+          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-5.4.1 gcc_5.4.1
 
-      - name: Set up env
+      - name: Set up environment
         run: |
-          export PATH=$PWD/gcc_4.9/bin:$PATH
+          export PATH=$PWD/gcc_5.4.1/bin:$PATH
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-android-
-          export KBUILD_IGNORE_COMPILER_VERSION=1
           echo "PATH=$PATH" >> $GITHUB_ENV
           echo "ARCH=$ARCH" >> $GITHUB_ENV
           echo "CROSS_COMPILE=$CROSS_COMPILE" >> $GITHUB_ENV
 
-      - name: Configure kernel & bypass GCC version check
+      - name: Configure kernel
         run: |
           cd kernel
           make mrproper
-          # 核心：强行移除 GCC 5.1+ 版本限制
-          sed -i '/#error Sorry, your version of GCC is too old/d' include/linux/compiler-gcc.h
-          # 加载机型配置
           cp arch/arm64/configs/sdm845_defconfig .config
           cat arch/arm64/configs/vendor/xiaomi/perseus.config >> .config
           make olddefconfig
-          sed -i 's/CONFIG_CC_VERSION_CHECK=y/CONFIG_CC_VERSION_CHECK=n/' .config
 
       - name: Build kernel
         run: |
