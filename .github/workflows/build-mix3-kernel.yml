@@ -21,12 +21,12 @@ jobs:
           ref: lineage-21
           path: kernel
 
-      # 补丁1：注释 sdcardfs 报错打印行
+      # 补丁2：注释 sdcardfs 报错打印行
       - name: Patch 1 — Fix sdcardfs compile error
         run: |
           cd kernel
           sed -i '469s/^pr_info/\/\//' fs/sdcardfs/main.c
-      # 修复.h文件路径  
+      # 补丁3：修复.h文件路径  
       - name: Fix all trace include paths in drivers
         run: |
           cd kernel
@@ -36,11 +36,12 @@ jobs:
           sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/gpu/msm|' drivers/gpu/msm/kgsl_trace.h
           
 
-      # 补丁2：find遍历批量替换，规避通配符报错
+      # 补丁3：find遍历批量替换，规避通配符报错
       - name: Patch 2 — Global fix all btfm_slim local headers
         run: |
           cd kernel/drivers/bluetooth
           find . -maxdepth 1 -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's/<\(btfm_slim.*\.h\)>/"\1"/g' {} \;
+          sed -i 's/#include <kgsl_device.h>/#include "kgsl_device.h"/' drivers/gpu/msm/kgsl_events.c
           
 
       # 下载你指定的 Linaro GCC 5.1
