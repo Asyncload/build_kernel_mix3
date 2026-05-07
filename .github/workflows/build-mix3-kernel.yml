@@ -36,6 +36,8 @@ jobs:
           sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/gpu/msm|' drivers/gpu/msm/kgsl_trace.h
           #修复 kgsl_events.c
           sed -i 's/#include <kgsl_device.h>/#include "kgsl_device.h"/' drivers/gpu/msm/kgsl_events.c
+          #修复 相机模块 can_trace.h
+          sed -i 's|#include ["<]cam_context.h[">]|#include "../cam_core/cam_context.h"|' drivers/media/platform/msm/camera/cam_utils/cam_trace.h
            
            # 找到所有包含 "#define TRACE_INCLUDE_PATH ." 且位于 drivers/ 下的 trace 头文件
           for file in $(grep -l '#define TRACE_INCLUDE_PATH \.$' drivers/*/*.h drivers/*/*/*.h 2>/dev/null); do
