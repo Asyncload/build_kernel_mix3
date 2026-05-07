@@ -49,6 +49,9 @@ jobs:
            sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/media/platform/msm/camera/cam_utils|' \
            drivers/media/platform/msm/camera/cam_utils/cam_trace.h
            
+          sed -i 's|#include "cam_ife_hw_mgr.h"|#include "../../cam_ife_hw_mgr.h"|' \
+          drivers/media/platform/msm/camera/cam_isp/isp_hw_mgr/hw_utils/include/cam_isp_packet_parser.h
+           
            # 找到所有包含 "#define TRACE_INCLUDE_PATH ." 且位于 drivers/ 下的 trace 头文件
           for file in $(grep -l '#define TRACE_INCLUDE_PATH \.$' drivers/*/*.h drivers/*/*/*.h 2>/dev/null); do
            # 计算该文件所在目录相对于 kernel/include/trace 的路径
