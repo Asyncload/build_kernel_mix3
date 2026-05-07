@@ -51,6 +51,16 @@ jobs:
           echo "Fixed $file -> $rel_path"
           fi
           done
+
+          # 自动相机修复 cam_trace.h 中的相对路径
+          CAM_TRACE="drivers/media/platform/msm/camera/cam_utils/cam_trace.h"
+          grep -oP '#include "\Kcam_[^"]+' $CAM_TRACE | while read header; do
+          found=$(find drivers/media/platform/msm/camera -name "$header.h" -type f | head -n1)
+          if [ -n "$found" ]; then
+          subdir=$(basename $(dirname "$found"))
+          sed -i "s|#include \"$header.h\"|#include \"../$subdir/$header.h\"|" $CAM_TRACE
+          fi
+          done
           
 
       # 补丁3：蓝牙模块，规避通配符报错
