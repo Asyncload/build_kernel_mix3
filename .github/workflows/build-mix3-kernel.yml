@@ -29,6 +29,9 @@ jobs:
           sed -i 's/#include "btfm_slim.h>/#include "btfm_slim.h"/' drivers/bluetooth/btfm_slim_codec.c
           # 移除蓝牙驱动中的 -Werror，避免警告中断编译
           sed -i 's/-Werror//g' drivers/bluetooth/Makefile
+          # 针对 btfm_slim.o 禁用 -Werror
+          echo 'CFLAGS_btfm_slim.o := -Wno-error' >> drivers/bluetooth/Makefile
+          echo 'CFLAGS_btfm_slim_codec.o := -Wno-error' >> drivers/bluetooth/Makefile
 
           # trace 路径修复
           sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/clk/qcom/mdss|' drivers/clk/qcom/mdss/mdss_pll_trace.h
