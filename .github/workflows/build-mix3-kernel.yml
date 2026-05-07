@@ -30,6 +30,7 @@ jobs:
           sed -i 's/#include "btfm_slim.h>/#include "btfm_slim.h"/' drivers/bluetooth/btfm_slim.c
           sed -i 's/#include "btfm_slim_wcn3990.h>/#include "btfm_slim_wcn3990.h"/' drivers/bluetooth/btfm_slim.c
           echo 'ccflags-y += -I$(srctree)/drivers/bluetooth' >> drivers/bluetooth/Makefile
+          echo 'ccflags-y += -I$(srctree)/drivers/bluetooth' >> drivers/bluetooth/Makefile
 
           # 2. 修复 btfm_slim_wcn3990.h 中的包含（如果还是尖括号）
           sed -i 's/#include <btfm_slim.h>/#include "btfm_slim.h"/' drivers/bluetooth/btfm_slim_wcn3990.h
@@ -47,6 +48,9 @@ jobs:
 
           # 相机驱动：批量将尖括号包含改为双引号
           find drivers/media/platform/msm/camera -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's/#include <cam_/#include "cam_/g' {} \;
+          # 修复 cam_context.h 中的包含路径
+          sed -i 's|#include "cam_req_mgr_interface.h"|#include "../cam_req_mgr/cam_req_mgr_interface.h"|' \
+           drivers/media/platform/msm/camera/cam_core/cam_context.h
 
           # cam_isp_packet_parser.h 修复
           sed -i 's|#include "cam_ife_hw_mgr.h"|#include "../../cam_ife_hw_mgr.h"|' \
