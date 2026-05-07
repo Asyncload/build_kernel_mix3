@@ -18,6 +18,7 @@ sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/
 # kgsl_device 包含
 sed -i 's/#include <kgsl_device.h>/#include "kgsl_device.h"/' drivers/gpu/msm/kgsl_events.c
 
+
 # 相机驱动：批量将尖括号包含改为双引号
 find drivers/media/platform/msm/camera -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's/#include <cam_/#include "cam_/g' {} \;
 
