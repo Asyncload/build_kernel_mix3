@@ -29,6 +29,7 @@ jobs:
           # 1. 修复 btfm_slim.c 中损坏的包含行
           sed -i 's/#include "btfm_slim.h>/#include "btfm_slim.h"/' drivers/bluetooth/btfm_slim.c
           sed -i 's/#include "btfm_slim_wcn3990.h>/#include "btfm_slim_wcn3990.h"/' drivers/bluetooth/btfm_slim.c
+          echo 'ccflags-y += -I$(srctree)/drivers/bluetooth' >> drivers/bluetooth/Makefile
 
           # 2. 修复 btfm_slim_wcn3990.h 中的包含（如果还是尖括号）
           sed -i 's/#include <btfm_slim.h>/#include "btfm_slim.h"/' drivers/bluetooth/btfm_slim_wcn3990.h
