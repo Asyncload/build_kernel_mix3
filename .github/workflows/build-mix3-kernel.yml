@@ -30,6 +30,8 @@ jobs:
           sed -i 's/#include <btfm_slim_wcn3990.h>/#include "btfm_slim_wcn3990.h"/' drivers/bluetooth/btfm_slim.c
           # btfm_slim_wcn3990.h 中的包含
           sed -i 's/#include <btfm_slim.h>/#include "btfm_slim.h"/' drivers/bluetooth/btfm_slim_wcn3990.h
+          #批量修复所有蓝牙相关文件
+          find drivers/bluetooth -type f -name "btfm*" -exec sed -i 's/#include <btfm_/#include "btfm_/g' {} \;
 
           # trace 路径修复
           sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/clk/qcom/mdss|' drivers/clk/qcom/mdss/mdss_pll_trace.h
