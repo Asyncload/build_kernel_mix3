@@ -30,6 +30,16 @@ jobs:
           sed -i 's/#include <\(btfm_slim.*\.h\)>/#include "\1"/g' "$f"
           done
 
+          #✅ 批量修复命令（适用于 MDSS 及其他目录）*_trace.h
+          for file in $(grep -rl '#define TRACE_INCLUDE_PATH \.$' drivers/ --include='*_trace.h'); do
+          rel_path=$(realpath --relative-to=include/trace "$(dirname "$file")" 2>/dev/null || echo "")
+          if [ -n "$rel_path" ]; then
+          sed -i "s|#define TRACE_INCLUDE_PATH \.$|#define TRACE_INCLUDE_PATH $rel_path|" "$file"
+          echo "✅ Fixed: $file -> $rel_path"
+         fi
+         done
+          
+
       # 下载并解压 Clang 13.0.0
       - name: Download Clang 13.0.0
         run: |
