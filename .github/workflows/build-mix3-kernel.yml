@@ -24,7 +24,10 @@ jobs:
       - name: Apply kernel patches
         working-directory: kernel
         run: |
-          # 蓝牙修复（批量替换 + 错误格式修复）
+
+          # 批量修复 power/supply/qcom 下的类似问题
+          find drivers/power/supply/qcom -name "*.c" -exec sed -i 's/#include <\([^>]*\)>/#include "\1"/g' {} \;
+      
           # 蓝牙修复（精确修复已知文件，避免破坏格式）
           # 1. 修复 btfm_slim.c 中损坏的包含行
           sed -i 's/#include "btfm_slim.h>/#include "btfm_slim.h"/' drivers/bluetooth/btfm_slim.c
