@@ -45,7 +45,8 @@ jobs:
           sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/clk/qcom/mdss|' drivers/clk/qcom/mdss/mdss_pll_trace.h
           sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/gpu/msm|' drivers/gpu/msm/kgsl_trace.h
           sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/gpu/msm|' drivers/gpu/msm/adreno_trace.h
-
+          # 修复 rndis_ipa_trace.h 的 TRACE_INCLUDE_PATH
+          sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/platform/msm/ipa/ipa_clients|' drivers/platform/msm/ipa/ipa_clients/rndis_ipa_trace.h
           # kgsl_device 包含
           sed -i 's/#include <kgsl_device.h>/#include "kgsl_device.h"/' drivers/gpu/msm/kgsl_events.c
 
@@ -65,6 +66,7 @@ jobs:
           sed -i 's|#include "cam_req_mgr_interface.h"|#include "../cam_req_mgr/cam_req_mgr_interface.h"|' "$CAM_TRACE"
           sed -i 's|#include "cam_context.h"|#include "../cam_core/cam_context.h"|' "$CAM_TRACE"
           sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/media/platform/msm/camera/cam_utils|' "$CAM_TRACE"
+          
           # 修复 3dsl_eeprom_dev.c 中不完整的 cam_sensor_cci_client 类型
           sed -i '1i#include "../cam_sensor_cci.h"' drivers/media/platform/msm/camera/cam_sensor_module/3dsl_eeprom/3dsl_eeprom_dev.c
 
