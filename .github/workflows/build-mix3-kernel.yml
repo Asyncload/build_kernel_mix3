@@ -65,6 +65,8 @@ jobs:
           sed -i 's|#include "cam_req_mgr_interface.h"|#include "../cam_req_mgr/cam_req_mgr_interface.h"|' "$CAM_TRACE"
           sed -i 's|#include "cam_context.h"|#include "../cam_core/cam_context.h"|' "$CAM_TRACE"
           sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/media/platform/msm/camera/cam_utils|' "$CAM_TRACE"
+          # 修复 3dsl_eeprom_dev.c 中不完整的 cam_sensor_cci_client 类型
+          sed -i '1i#include "../cam_sensor_cci.h"' drivers/media/platform/msm/camera/cam_sensor_module/3dsl_eeprom/3dsl_eeprom_dev.c
 
       - name: Fix sdcardfs compile error
         working-directory: kernel
