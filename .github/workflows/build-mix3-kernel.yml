@@ -21,6 +21,13 @@ jobs:
           ref: lineage-21
           path: kernel
 
+      - name: Apply kernel patches 
+        working-directory: kernel
+        run: |
+
+         # 批量替换尖括号为双引号
+          find drivers/bluetooth -type f -exec sed -i 's/#include <btfm_/#include "btfm_/g' {} \;
+
       # 下载并解压 Clang 13.0.0
       - name: Download Clang 13.0.0
         run: |
