@@ -25,6 +25,8 @@ jobs:
         working-directory: kernel
         run: |
 
+         # 修复 idtp9220.c 中的尖括号包含
+         sed -i 's/#include <idtp9220.h>/#include "idtp9220.h"/' drivers/power/supply/qcom/idtp9220.c
 
          # 修复 相机传感器模块不在同一目录 路径
          sed -i 's|#include "cam_req_mgr_interface.h"|#include "../cam_req_mgr/cam_req_mgr_interface.h"|' \
