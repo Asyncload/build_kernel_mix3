@@ -25,8 +25,6 @@ jobs:
         working-directory: kernel
         run: |
 
-        
-
 
          # 修复 相机传感器模块不在同一目录 路径
          sed -i 's|#include "cam_req_mgr_interface.h"|#include "../cam_req_mgr/cam_req_mgr_interface.h"|' \
@@ -45,6 +43,11 @@ jobs:
          # 修复 cam_sync_util.h 中的尖括号包含
          sed -i 's|#include <cam_sync_api.h>|#include "cam_sync_api.h"|' \
          drivers/media/platform/msm/camera/cam_sync/cam_sync_util.h
+
+         # 修复 cam_sensor_util.h 中的尖括号包含
+         sed -i 's|#include <cam_sensor_cmn_header.h>|#include "cam_sensor_cmn_header.h"|' \
+         drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor_utils/cam_sensor_util.h
+
            
          # 修复相机 cam_trace.h 中的头文件路径
          CAM_TRACE="drivers/media/platform/msm/camera/cam_utils/cam_trace.h"
