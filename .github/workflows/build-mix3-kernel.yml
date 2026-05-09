@@ -25,9 +25,15 @@ jobs:
         working-directory: kernel
         run: |
 
+
+         # 修复 cam_context.h 中的 cam_req_mgr_interface.h 路径
+         sed -i 's|#include "cam_req_mgr_interface.h"|#include "../cam_req_mgr/cam_req_mgr_interface.h"|' \
+         drivers/media/platform/msm/camera/cam_core/cam_context.h
+
          # 修复 cam_isp_packet_parser.h 中的 cam_ife_hw_mgr.h 路径
-         CAM_ISP="drivers/media/platform/msm/camera/cam_isp/isp_hw_mgr/hw_utils/include/cam_isp_packet_parser.h"
-         sed -i 's|#include "cam_ife_hw_mgr.h"|#include "../../cam_ife_hw_mgr.h"|' "$CAM_ISP"
+         sed -i 's|#include "cam_ife_hw_mgr.h"|#include "../../cam_ife_hw_mgr.h"|' \
+         drivers/media/platform/msm/camera/cam_isp/isp_hw_mgr/hw_utils/include/cam_isp_packet_parser.h
+         
          # 修复相机 cam_trace.h 中的头文件路径
          CAM_TRACE="drivers/media/platform/msm/camera/cam_utils/cam_trace.h"
          sed -i 's|#include "cam_req_mgr_core.h"|#include "../cam_req_mgr/cam_req_mgr_core.h"|' "$CAM_TRACE"
