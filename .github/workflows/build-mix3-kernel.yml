@@ -25,6 +25,8 @@ jobs:
         working-directory: kernel
         run: |
 
+        
+
 
          # 修复 相机传感器模块不在同一目录 路径
          sed -i 's|#include "cam_req_mgr_interface.h"|#include "../cam_req_mgr/cam_req_mgr_interface.h"|' \
@@ -40,7 +42,10 @@ jobs:
           # 批量修复 cam_cci 目录下所有 .c 和 .h 中的尖括号包含
          find drivers/media/platform/msm/camera/cam_sensor_module/cam_cci -type f \( -name "*.c" -o -name "*.h" \) \
          -exec sed -i -E 's|#include <(cam_sensor_[^>]+)>|#include "../cam_sensor_utils/\1"|g' {} \;
-         
+         # 修复 cam_sync_util.h 中的尖括号包含
+         sed -i 's|#include <cam_sync_api.h>|#include "cam_sync_api.h"|' \
+         drivers/media/platform/msm/camera/cam_sync/cam_sync_util.h
+           
          # 修复相机 cam_trace.h 中的头文件路径
          CAM_TRACE="drivers/media/platform/msm/camera/cam_utils/cam_trace.h"
          sed -i 's|#include "cam_req_mgr_core.h"|#include "../cam_req_mgr/cam_req_mgr_core.h"|' "$CAM_TRACE"
@@ -63,7 +68,9 @@ jobs:
           echo "✅ Fixed: $file -> $rel_path"
          fi
          done
-          
+         
+          # 修复 kgsl_events.c 中损坏的包含行
+          sed -i 's|#include "kgsl_device\.h>|#include "kgsl_device.h"|' drivers/gpu/msm/kgsl_events.c
 
       # 下载并解压 Clang 13.0.0
       - name: Download Clang 13.0.0
