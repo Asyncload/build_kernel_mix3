@@ -25,6 +25,13 @@ jobs:
         working-directory: kernel
         run: |
 
+         # 修复 cam_trace.h 中的头文件路径
+         CAM_TRACE="drivers/media/platform/msm/camera/cam_utils/cam_trace.h"
+         sed -i 's|#include "cam_req_mgr_core.h"|#include "../cam_req_mgr/cam_req_mgr_core.h"|' "$CAM_TRACE"
+         sed -i 's|#include "cam_req_mgr_interface.h"|#include "../cam_req_mgr/cam_req_mgr_interface.h"|' "$CAM_TRACE"
+         sed -i 's|#include "cam_context.h"|#include "../cam_core/cam_context.h"|' "$CAM_TRACE"
+         sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/media/platform/msm/camera/cam_utils|' "$CAM_TRACE"
+
          # 批量替换尖括号为双引号
           for f in drivers/bluetooth/*.c drivers/bluetooth/*.h; do
           sed -i 's/#include <\(btfm_slim.*\.h\)>/#include "\1"/g' "$f"
