@@ -197,4 +197,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Mix3-KernelSU-AnyKernel3
-          path: *.zip
+          path: AnyKernel3/*.zip
