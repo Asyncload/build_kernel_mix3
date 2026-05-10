@@ -127,8 +127,15 @@ jobs:
 
       - name: Build kernel
         working-directory: kernel
-        # 如果上面环境变量未生效，可显式传递 CC 和 AS
-        run: make -j6 KCFLAGS="-Wno-error"
+        run: |
+         make -j$(nproc) KCFLAGS="-Wno-error" 2>&1 | tee build.log
+         # 即使失败也继续上传日志
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+         name: build-log
+         path: kernel/build.log
 
       - name: Upload kernel artifact
         uses: actions/upload-artifact@v4
