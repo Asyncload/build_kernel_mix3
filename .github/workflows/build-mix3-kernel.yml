@@ -24,6 +24,15 @@ jobs:
       - name: Apply kernel patches 
         working-directory: kernel
         run: |
+
+         #调试模块
+         if grep -q "TRACE_INCLUDE_PATH" drivers/soc/qcom/tracer_pkt_private.h; then
+         sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/soc/qcom|' drivers/soc/qcom/tracer_pkt_private.h
+         else
+          # 如果不存在，可能需要添加或者禁用模块
+         scripts/config --disable CONFIG_TRACER_PKT
+         fi
+
          #修复USB驱动 双引号问题
          sed -i 's|#include <function/u_ncm.h>|#include "function/u_ncm.h"|' drivers/usb/gadget/configfs.c
 
@@ -60,9 +69,6 @@ jobs:
          sed -i 's|#include "cam_context.h"|#include "../cam_core/cam_context.h"|' "$CAM_TRACE"
          sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/media/platform/msm/camera/cam_utils|' "$CAM_TRACE"
 
-         # 修复 tracer_pkt_trace.h 中的 TRACE_INCLUDE_PATH
-         sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/soc/qcom|' \
-         drivers/soc/qcom/tracer_pkt_trace.h
  
          # 蓝牙驱动批量替换尖括号为双引号
           for f in drivers/bluetooth/*.c drivers/bluetooth/*.h; do
