@@ -198,27 +198,42 @@ jobs:
         run: |
           wget -O stock_boot.img \
             "https://github.com/Asyncload/build_kernel_mix3/releases/download/%E5%8E%9F%E5%8E%82/boot.img"
-
       - name: Package new-boot.img with magiskboot
         run: |
-          # 下载 magiskboot v27.0
+         # 下载 magiskboot
           wget -q https://github.com/topjohnwu/magisk/releases/download/v27.0/magiskboot-27.0.tar.xz
           tar -xf magiskboot-27.0.tar.xz
           chmod +x magiskboot
 
-          # 准备内核镜像（拼接 dtb 如果存在）
+          # 准备内核镜像（优先使用带 dtb 的拼接文件）
           if [ -f kernel/arch/arm64/boot/dts/qcom/sdm845.dtb ]; then
-            cat kernel/arch/arm64/boot/Image.gz kernel/arch/arm64/boot/dts/qcom/sdm845.dtb > kernel/Image.gz-dtb
-            KERNEL_FILE=kernel/Image.gz-dtb
-          else
-            KERNEL_FILE=kernel/arch/arm64/boot/Image.gz
-          fi
+          cat kernel/arch/arm64/boot/Image.gz kernel/arch/arm64/boot/dts/qcom/sdm845.dtb > kernel/Image.gz-dtb
+         KERNEL_FILE="kernel/Image.gz-dtb"
+         elif [ -f kernel/arch/arm64/boot/Image.gz-dtb ]; then
+         KERNEL_FILE="kernel/arch/arm64/boot/Image.gz-dtb"
+         else
+          KERNEL_FILE="kernel/arch/arm64/boot/Image.gz"
+         fi
 
-          cp stock_boot.img boot.img
-          ./magiskboot unpack boot.img
+         # 验证内核文件存在
+         if [ ! -f "$KERNEL_FILE" ]; then
+         echo "错误: 找不到内核文件: $KERNEL_FILE"
+         ls -l kernel/arch/arm64/boot/  # 列出目录内容帮助调试
+          exit 1
+         fi
+    
+         # 验证原厂 boot.img 存在
+         if [ ! -f stock_boot.img ]; then
+         echo "错误: stock_boot.img 不存在"
+         exit 1
+         fi
+
+         cp stock_boot.img boot.img
+         ./magiskboot unpack boot.img
           cp "$KERNEL_FILE" kernel
-          ./magiskboot repack boot.img new-boot.img
+         ./magiskboot repack boot.img new-boot.img
           ls -lh new-boot.img
+
 
       # ===== 5. 上传两个产物 =====
       - name: Upload AnyKernel3 zip
