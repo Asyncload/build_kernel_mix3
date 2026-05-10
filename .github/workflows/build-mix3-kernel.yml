@@ -34,9 +34,9 @@ jobs:
           sed -i 's/\(.*elliptic_set_hall_state.*\)/\/\/ \1/' drivers/halls/halls.c
 
           # 注释 elliptic_data_msm_io.c 中调用三个未定义函数的行
-          sed -i 's/\(.*afe_start_pseudo_port.*\)/\/\/ \1/' techpack/audio/asoc/elliptic/io_modules/msm/elliptic_data_msm_io.c
-          sed -i 's/\(.*afe_stop_pseudo_port.*\)/\/\/ \1/' techpack/audio/asoc/elliptic/io_modules/msm/elliptic_data_msm_io.c
-          sed -i 's/\(.*ultrasound_apr_set_parameter.*\)/\/\/ \1/' techpack/audio/asoc/elliptic/io_modules/msm/elliptic_data_msm_io.c
+          #sed -i 's/\(.*afe_start_pseudo_port.*\)/\/\/ \1/' techpack/audio/asoc/elliptic/io_modules/msm/elliptic_data_msm_io.c
+          #sed -i 's/\(.*afe_stop_pseudo_port.*\)/\/\/ \1/' techpack/audio/asoc/elliptic/io_modules/msm/elliptic_data_msm_io.c
+          #sed -i 's/\(.*ultrasound_apr_set_parameter.*\)/\/\/ \1/' techpack/audio/asoc/elliptic/io_modules/msm/elliptic_data_msm_io.c
 
           # 调试模块 trace 路径修复
           sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/soc/qcom|' drivers/soc/qcom/tracer_pkt_private.h
