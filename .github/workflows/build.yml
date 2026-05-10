@@ -193,8 +193,42 @@ jobs:
           zip -r9 Mix3-KernelSU-$(date +%Y%m%d-%H%M%S).zip . -x ".git*" "*~" "*.sh.*" "*.txt"
           
 
-      - name: Upload AnyKernel3 ZIP
+      # ===== 4. boot.img 打包 =====
+      - name: Download stock boot.img from Release
+        run: |
+          wget -O stock_boot.img \
+            "https://github.com/Asyncload/build_kernel_mix3/releases/download/%E5%8E%9F%E5%8E%82/boot.img"
+
+      - name: Package new-boot.img with magiskboot
+        run: |
+          # 下载 magiskboot v27.0
+          wget -q https://github.com/topjohnwu/magisk/releases/download/v27.0/magiskboot-27.0.tar.xz
+          tar -xf magiskboot-27.0.tar.xz
+          chmod +x magiskboot
+
+          # 准备内核镜像（拼接 dtb 如果存在）
+          if [ -f kernel/arch/arm64/boot/dts/qcom/sdm845.dtb ]; then
+            cat kernel/arch/arm64/boot/Image.gz kernel/arch/arm64/boot/dts/qcom/sdm845.dtb > kernel/Image.gz-dtb
+            KERNEL_FILE=kernel/Image.gz-dtb
+          else
+            KERNEL_FILE=kernel/arch/arm64/boot/Image.gz
+          fi
+
+          cp stock_boot.img boot.img
+          ./magiskboot unpack boot.img
+          cp "$KERNEL_FILE" kernel
+          ./magiskboot repack boot.img new-boot.img
+          ls -lh new-boot.img
+
+      # ===== 5. 上传两个产物 =====
+      - name: Upload AnyKernel3 zip
         uses: actions/upload-artifact@v4
         with:
           name: Mix3-KernelSU-AnyKernel3
           path: AnyKernel3/*.zip
+
+      - name: Upload new-boot.img
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mix3-KernelSU-boot
+          path: new-boot.img
