@@ -21,85 +21,81 @@ jobs:
           ref: lineage-21
           path: kernel
 
-      - name: Apply kernel patches 
+      - name: Apply kernel patches
         working-directory: kernel
         run: |
+          # 注释 halls.c 中调用 elliptic_set_hall_state 的行
+          sed -i 's/\(.*elliptic_set_hall_state.*\)/\/\/ \1/' drivers/halls/halls.c
 
-         # 注释 halls.c 中调用 elliptic_set_hall_state 的行
-         sed -i 's/\(.*elliptic_set_hall_state.*\)/\/\/ \1/' drivers/halls/halls.c
+          # 注释 elliptic_data_msm_io.c 中调用三个未定义函数的行
+          sed -i 's/\(.*afe_start_pseudo_port.*\)/\/\/ \1/' techpack/audio/asoc/elliptic/io_modules/msm/elliptic_data_msm_io.c
+          sed -i 's/\(.*afe_stop_pseudo_port.*\)/\/\/ \1/' techpack/audio/asoc/elliptic/io_modules/msm/elliptic_data_msm_io.c
+          sed -i 's/\(.*ultrasound_apr_set_parameter.*\)/\/\/ \1/' techpack/audio/asoc/elliptic/io_modules/msm/elliptic_data_msm_io.c
 
-         # 注释 elliptic_data_msm_io.c 中调用三个未定义函数的行
-         sed -i 's/\(.*afe_start_pseudo_port.*\)/\/\/ \1/' techpack/audio/asoc/elliptic/io_modules/msm/elliptic_data_msm_io.c
-         sed -i 's/\(.*afe_stop_pseudo_port.*\)/\/\/ \1/' techpack/audio/asoc/elliptic/io_modules/msm/elliptic_data_msm_io.c
-         sed -i 's/\(.*ultrasound_apr_set_parameter.*\)/\/\/ \1/' techpack/audio/asoc/elliptic/io_modules/msm/elliptic_data_msm_io.c
+          # 调试模块 trace 路径修复
+          sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/soc/qcom|' drivers/soc/qcom/tracer_pkt_private.h
 
-         #调试模块
-         sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/soc/qcom|' drivers/soc/qcom/tracer_pkt_private.h
+          # 修复 USB 驱动双引号问题
+          sed -i 's|#include <function/u_ncm.h>|#include "function/u_ncm.h"|' drivers/usb/gadget/configfs.c
 
-         #修复USB驱动 双引号问题
-         sed -i 's|#include <function/u_ncm.h>|#include "function/u_ncm.h"|' drivers/usb/gadget/configfs.c
+          # 修复 idtp9220.c 中的尖括号包含
+          sed -i 's/#include <idtp9220.h>/#include "idtp9220.h"/' drivers/power/supply/qcom/idtp9220.c
 
-         # 修复 idtp9220.c 中的尖括号包含
-         sed -i 's/#include <idtp9220.h>/#include "idtp9220.h"/' drivers/power/supply/qcom/idtp9220.c
-
-         # 修复 相机传感器模块不在同一目录 路径
-         sed -i 's|#include "cam_req_mgr_interface.h"|#include "../cam_req_mgr/cam_req_mgr_interface.h"|' \
-         drivers/media/platform/msm/camera/cam_core/cam_context.h
-         sed -i 's|#include "cam_cci_dev.h"|#include "../cam_cci/cam_cci_dev.h"|' \
-         drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor_io/cam_sensor_i2c.h
-         sed -i 's|#include "cam_ife_hw_mgr.h"|#include "../../cam_ife_hw_mgr.h"|' \
-         drivers/media/platform/msm/camera/cam_isp/isp_hw_mgr/hw_utils/include/cam_isp_packet_parser.h
-         
-         sed -i 's|#include "cam_sensor_cmn_header.h"|#include "../cam_sensor_utils/cam_sensor_cmn_header.h"|' \
-         drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor_io/cam_sensor_io.h
+          # 修复相机传感器模块不在同一目录的路径
+          sed -i 's|#include "cam_req_mgr_interface.h"|#include "../cam_req_mgr/cam_req_mgr_interface.h"|' \
+            drivers/media/platform/msm/camera/cam_core/cam_context.h
+          sed -i 's|#include "cam_cci_dev.h"|#include "../cam_cci/cam_cci_dev.h"|' \
+            drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor_io/cam_sensor_i2c.h
+          sed -i 's|#include "cam_ife_hw_mgr.h"|#include "../../cam_ife_hw_mgr.h"|' \
+            drivers/media/platform/msm/camera/cam_isp/isp_hw_mgr/hw_utils/include/cam_isp_packet_parser.h
+          sed -i 's|#include "cam_sensor_cmn_header.h"|#include "../cam_sensor_utils/cam_sensor_cmn_header.h"|' \
+            drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor_io/cam_sensor_io.h
 
           # 批量修复 cam_cci 目录下所有 .c 和 .h 中的尖括号包含
-         find drivers/media/platform/msm/camera/cam_sensor_module/cam_cci -type f \( -name "*.c" -o -name "*.h" \) \
-         -exec sed -i -E 's|#include <(cam_sensor_[^>]+)>|#include "../cam_sensor_utils/\1"|g' {} \;
-         # 修复 cam_sync_util.h 中的尖括号包含
-         sed -i 's|#include <cam_sync_api.h>|#include "cam_sync_api.h"|' \
-         drivers/media/platform/msm/camera/cam_sync/cam_sync_util.h
+          find drivers/media/platform/msm/camera/cam_sensor_module/cam_cci -type f \( -name "*.c" -o -name "*.h" \) \
+            -exec sed -i -E 's|#include <(cam_sensor_[^>]+)>|#include "../cam_sensor_utils/\1"|g' {} \;
 
-         # 修复 cam_sensor_util.h 中的尖括号包含
-         sed -i 's|#include <cam_sensor_cmn_header.h>|#include "cam_sensor_cmn_header.h"|' \
-         drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor_utils/cam_sensor_util.h
+          # 修复 cam_sync_util.h 中的尖括号包含
+          sed -i 's|#include <cam_sync_api.h>|#include "cam_sync_api.h"|' \
+            drivers/media/platform/msm/camera/cam_sync/cam_sync_util.h
 
-           
-         # 修复相机 cam_trace.h 中的头文件路径
-         CAM_TRACE="drivers/media/platform/msm/camera/cam_utils/cam_trace.h"
-         sed -i 's|#include "cam_req_mgr_core.h"|#include "../cam_req_mgr/cam_req_mgr_core.h"|' "$CAM_TRACE"
-         sed -i 's|#include "cam_req_mgr_interface.h"|#include "../cam_req_mgr/cam_req_mgr_interface.h"|' "$CAM_TRACE"
-         sed -i 's|#include "cam_context.h"|#include "../cam_core/cam_context.h"|' "$CAM_TRACE"
-         sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/media/platform/msm/camera/cam_utils|' "$CAM_TRACE"
+          # 修复 cam_sensor_util.h 中的尖括号包含
+          sed -i 's|#include <cam_sensor_cmn_header.h>|#include "cam_sensor_cmn_header.h"|' \
+            drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor_utils/cam_sensor_util.h
 
- 
-         # 蓝牙驱动批量替换尖括号为双引号
+          # 修复相机 cam_trace.h 中的头文件路径
+          CAM_TRACE="drivers/media/platform/msm/camera/cam_utils/cam_trace.h"
+          sed -i 's|#include "cam_req_mgr_core.h"|#include "../cam_req_mgr/cam_req_mgr_core.h"|' "$CAM_TRACE"
+          sed -i 's|#include "cam_req_mgr_interface.h"|#include "../cam_req_mgr/cam_req_mgr_interface.h"|' "$CAM_TRACE"
+          sed -i 's|#include "cam_context.h"|#include "../cam_core/cam_context.h"|' "$CAM_TRACE"
+          sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/media/platform/msm/camera/cam_utils|' "$CAM_TRACE"
+
+          # 蓝牙驱动批量替换尖括号为双引号
           for f in drivers/bluetooth/*.c drivers/bluetooth/*.h; do
-          sed -i 's/#include <\(btfm_slim.*\.h\)>/#include "\1"/g' "$f"
+            sed -i 's/#include <\(btfm_slim.*\.h\)>/#include "\1"/g' "$f"
           done
+
           # GPU 驱动修复
           find drivers/gpu/msm -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's/#include <kgsl_/#include "kgsl_/g' {} \;
 
-          #✅ 批量修复命令（适用于 MDSS 及其他目录）*_trace.h
+          # 批量修复所有 *_trace.h 中的 TRACE_INCLUDE_PATH
           for file in $(grep -rl '#define TRACE_INCLUDE_PATH \.$' drivers/ --include='*_trace.h'); do
-          rel_path=$(realpath --relative-to=include/trace "$(dirname "$file")" 2>/dev/null || echo "")
-          if [ -n "$rel_path" ]; then
-          sed -i "s|#define TRACE_INCLUDE_PATH \.$|#define TRACE_INCLUDE_PATH $rel_path|" "$file"
-          echo "✅ Fixed: $file -> $rel_path"
-         fi
-         done
-         
+            rel_path=$(realpath --relative-to=include/trace "$(dirname "$file")" 2>/dev/null || echo "")
+            if [ -n "$rel_path" ]; then
+              sed -i "s|#define TRACE_INCLUDE_PATH \.$|#define TRACE_INCLUDE_PATH $rel_path|" "$file"
+              echo "✅ Fixed: $file -> $rel_path"
+            fi
+          done
+
           # 修复 kgsl_events.c 中损坏的包含行
           sed -i 's|#include "kgsl_device\.h>|#include "kgsl_device.h"|' drivers/gpu/msm/kgsl_events.c
 
-      # 下载并解压 Clang 13.0.0
       - name: Download Clang 13.0.0
         run: |
           wget https://github.com/llvm/llvm-project/releases/download/llvmorg-13.0.0/clang+llvm-13.0.0-x86_64-linux-gnu-ubuntu-20.04.tar.xz
           tar -xf clang+llvm-13.0.0-x86_64-linux-gnu-ubuntu-20.04.tar.xz
           mv clang+llvm-13.0.0-x86_64-linux-gnu-ubuntu-20.04 clang-13
 
-      # 设置环境变量：使用 Clang 和交叉工具链
       - name: Set environment for Clang
         run: |
           export PATH=$PWD/clang-13/bin:$PATH
@@ -108,9 +104,7 @@ jobs:
           export LLVM=1
           export CC=clang
           export LD=ld.lld
-          # 显式指定汇编器（可选，但确保正确）
           export AS=aarch64-linux-gnu-as
-          # 写入 GITHUB_ENV
           echo "PATH=$PATH" >> $GITHUB_ENV
           echo "ARCH=$ARCH" >> $GITHUB_ENV
           echo "CROSS_COMPILE=$CROSS_COMPILE" >> $GITHUB_ENV
@@ -124,26 +118,26 @@ jobs:
         run: |
           cp arch/arm64/configs/sdm845_defconfig .config
           cat arch/arm64/configs/vendor/xiaomi/perseus.config >> .config
-          
-          # 禁用 EFI 相关（对于手机内核不需要）
+
+          # ========== 禁用不必要的模块（解决链接错误） ==========
+          # 1. EFI（手机不需要）
           scripts/config --disable CONFIG_EFI
           scripts/config --disable CONFIG_EFI_STUB
           scripts/config --disable CONFIG_EFI_DEV_PATH_PARSER
 
-          # 禁用霍尔传感器相关
+          # 2. 霍尔传感器（非核心）
           scripts/config --disable CONFIG_HALL
           scripts/config --disable CONFIG_HALL_SENSOR
 
-           # 禁用音频/elliptic 相关
-           scripts/config --disable CONFIG_ELLIPTIC
-           scripts/config --disable CONFIG_MSM_ULTRASOUND
-           scripts/config --disable CONFIG_SND_SOC_MSM_ULTRA
-           scripts/config --disable CONFIG_MSM_QDSP6_APRV2
-           scripts/config --disable CONFIG_MSM_ADSP_LOADER
-           scripts/config --disable CONFIG_MSM_AUDIO
-           scripts/config --disable CONFIG_AFE_LOOPBACK
+          # 3. 音频平衡方案：禁用 elliptic 和超声模块，但保留基本音频驱动
+          scripts/config --disable CONFIG_ELLIPTIC          # 椭圆算法模块
+          scripts/config --disable CONFIG_ELLIPTIC_SUPPORT  # 备用选项
+          scripts/config --disable CONFIG_MSM_ULTRASOUND    # 超声模块
+          scripts/config --disable CONFIG_SND_SOC_MSM_ULTRA # 超声 DSP 接口
+          scripts/config --disable CONFIG_AFE_LOOPBACK      # 回声反馈（可能引发未定义符号）
+          # 注意：不禁用 CONFIG_MSM_AUDIO 和 CONFIG_MSM_QDSP6_APRV2，保留基础音频
 
-           # 更新配置
+          # ========== 更新配置 ==========
           make ARCH=arm64 olddefconfig
           make scripts
           make prepare
@@ -151,9 +145,8 @@ jobs:
       - name: Build kernel
         working-directory: kernel
         run: |
-         make -j$(nproc) KCFLAGS="-Wno-error" 
-         
-    
+          make -j$(nproc) KCFLAGS="-Wno-error"
+
       - name: Upload kernel artifact
         uses: actions/upload-artifact@v4
         with:
