@@ -24,6 +24,12 @@ jobs:
       - name: Apply kernel patches
         working-directory: kernel
         run: |
+
+          # 彻底移除无法编译的 elliptic 音频模块
+          rm -rf techpack/audio/asoc/elliptic
+          rm -rf techpack/audio/asoc/elliptic_common
+          # 并从 Makefile 中移除相关行，避免编译时再引用
+          sed -i '/elliptic/d' techpack/audio/asoc/Makefile 2>/dev/null || true
           # 注释 halls.c 中调用 elliptic_set_hall_state 的行
           sed -i 's/\(.*elliptic_set_hall_state.*\)/\/\/ \1/' drivers/halls/halls.c
 
