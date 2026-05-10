@@ -54,6 +54,16 @@ jobs:
           sed -i 's/#include <idtp9220.h>/#include "idtp9220.h"/' drivers/power/supply/qcom/idtp9220.c
           # ... (在此处继续添加您之前所有成功的 sed 命令) ...
 
+          # ========== 蓝牙驱动修复（完整） ==========
+          # 1. 批量替换尖括号为双引号
+          for f in drivers/bluetooth/*.c drivers/bluetooth/*.h; do
+          sed -i 's/#include <\(btfm_slim.*\.h\)>/#include "\1"/g' "$f"
+           done
+          # 2. 修复可能损坏的引号（多出 > 的情况）
+          sed -i 's|#include "btfm_slim\.h>|#include "btfm_slim.h"|' drivers/bluetooth/btfm_slim.c
+          sed -i 's|#include "btfm_slim_wcn3990\.h>|#include "btfm_slim_wcn3990.h"|' drivers/bluetooth/btfm_slim.c
+          sed -i 's|#include "btfm_slim\.h>|#include "btfm_slim.h"|' drivers/bluetooth/btfm_slim_wcn3990.h
+
           # 删除不兼容的 elliptic 模块
           rm -rf techpack/audio/asoc/elliptic techpack/audio/asoc/elliptic_common 2>/dev/null || true
           sed -i '/elliptic/d' techpack/audio/asoc/Makefile 2>/dev/null || true
