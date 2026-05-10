@@ -54,6 +54,16 @@ jobs:
           sed -i 's/#include <idtp9220.h>/#include "idtp9220.h"/' drivers/power/supply/qcom/idtp9220.c
           # ... (在此处继续添加您之前所有成功的 sed 命令) ...
 
+          # 批量修复所有 *_trace.h 文件中的 TRACE_INCLUDE_PATH
+           for file in $(grep -rl '#define TRACE_INCLUDE_PATH \.$' drivers/ --include='*_trace.h'); do
+          # 计算相对于 include/trace 的相对路径
+           dir=$(dirname "$file")
+            # 从 include/trace 到内核根目录需要 ../..，然后加上 dir
+            rel_path="../../$dir"
+           sed -i "s|#define TRACE_INCLUDE_PATH \.$|#define TRACE_INCLUDE_PATH $rel_path|" "$file"
+           echo "Fixed: $file -> $rel_path"
+           done
+
           # ========== 蓝牙驱动修复（完整） ==========
           # 1. 批量替换尖括号为双引号
           for f in drivers/bluetooth/*.c drivers/bluetooth/*.h; do
