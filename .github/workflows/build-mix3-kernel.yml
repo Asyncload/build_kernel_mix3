@@ -122,17 +122,20 @@ jobs:
           scripts/config --disable CONFIG_EFI_STUB
           scripts/config --disable CONFIG_EFI_DEV_PATH_PARSER
 
-          # 禁用霍尔传感器
-          scripts/config --disable CONFIG_HALL_SENSOR
+          # 禁用霍尔传感器相关
           scripts/config --disable CONFIG_HALL
+          scripts/config --disable CONFIG_HALL_SENSOR
 
-          # 禁用音频相关（techpack 中的 elliptic 和 ultrasound 模块）
-          scripts/config --disable CONFIG_SND_SOC_MSM_ULTRA
-          scripts/config --disable CONFIG_AFE_LOOPBACK
-          scripts/config --disable CONFIG_MSM_QDSP6_APRV2
-          scripts/config --disable CONFIG_MSM_ADSP_LOADER
-          scripts/config --disable CONFIG_MSM_AUDIO
-          
+           # 禁用音频/elliptic 相关
+           scripts/config --disable CONFIG_ELLIPTIC
+           scripts/config --disable CONFIG_MSM_ULTRASOUND
+           scripts/config --disable CONFIG_SND_SOC_MSM_ULTRA
+           scripts/config --disable CONFIG_MSM_QDSP6_APRV2
+           scripts/config --disable CONFIG_MSM_ADSP_LOADER
+           scripts/config --disable CONFIG_MSM_AUDIO
+           scripts/config --disable CONFIG_AFE_LOOPBACK
+
+           # 更新配置
           make ARCH=arm64 olddefconfig
           make scripts
           make prepare
