@@ -143,7 +143,7 @@ jobs:
       - name: Build kernel
         working-directory: kernel
         run: |
-         make -j6 KCFLAGS="-Wno-error" 
+         make -j$(nproc) KCFLAGS="-Wno-error" 
          
     
       - name: Upload kernel artifact
