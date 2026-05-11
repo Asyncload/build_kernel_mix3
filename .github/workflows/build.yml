@@ -195,7 +195,15 @@ jobs:
       - name: Package new-boot.img with magiskboot
         run: |
          set -e
-         echo "==> 使用仓库中的 magiskboot"
+         echo "==> 验证仓库中的 magiskboot 文件"
+         if [ ! -f "./magiskboot" ]; then
+         echo "错误：仓库根目录下找不到 magiskboot 文件"
+          echo "当前目录内容："
+          ls -la
+          exit 1
+         fi
+         echo "找到 magiskboot，大小："
+          ls -lh ./magiskboot
          chmod +x ./magiskboot
 
           echo "==> 准备内核镜像"
