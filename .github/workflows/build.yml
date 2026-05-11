@@ -5,7 +5,7 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-jobs:
+jobs: 初始化😎
   build_kernel:
     runs-on: ubuntu-22.04
     steps:
@@ -144,14 +144,15 @@ jobs:
         working-directory: kernel
         run: make -j$(nproc) KCFLAGS="-Wno-error"
 
-            
       - name: 下载 AnyKernel3 repo
-        run: git clone https://github.com/osm0sis/AnyKernel3 -b master AnyKernel3
+        run: |
+          git clone https://github.com/osm0sis/AnyKernel3 -b master
+          cd AnyKernel3
+          rm -rf .git
 
       - name: 准备 AnyKernel3
         run: |
           cd AnyKernel3
-          rm -rf .git
           cat > anykernel.sh << 'EOF'
           # AnyKernel3 Ramdisk Mod Script
           kernel.string=Mix3-KernelSU by Github Action
@@ -177,53 +178,44 @@ jobs:
 
       - name: 复制内核映像 to AnyKernel3
         run: |
-          # 优先使用 Image.gz-dtb
-          if [ -f kernel/arch/arm64/boot/Image.gz-dtb ]; then
+          if [ -f "kernel/arch/arm64/boot/Image.gz-dtb" ]; then
             cp kernel/arch/arm64/boot/Image.gz-dtb AnyKernel3/
-          elif [ -f kernel/arch/arm64/boot/Image.gz ]; then
-            cp kernel/arch/arm64/boot/Image.gz AnyKernel3/
           else
-            echo "No kernel image found"
-            exit 1
+            cp kernel/arch/arm64/boot/Image.gz AnyKernel3/
           fi
 
       - name: Create flashable ZIP
         run: |
           cd AnyKernel3
           zip -r9 Mix3-KernelSU-$(date +%Y%m%d-%H%M%S).zip . -x ".git*" "*~" "*.sh.*" "*.txt"
-          
 
-      # ===== 4. boot.img 打包 =====
       - name: Download stock boot.img from Release
         run: |
-          wget -O stock_boot.img \
-            "https://github.com/Asyncload/build_kernel_mix3/releases/download/%E5%8E%9F%E5%8E%82/boot.img"
-            
+          wget -O stock_boot.img "https://github.com/Asyncload/build_kernel_mix3/releases/download/%E5%8E%9F%E5%8E%82/boot.img"
+
       - name: Package new-boot.img with magiskboot
         run: |
-          set -e  # 确保任何错误都会退出
-          echo "==> 下载 magiskboot v27.0"
-          wget -q https://github.com/topjohnwu/magisk/releases/download/v27.0/magiskboot-27.0.tar.xz
-          tar -xf magiskboot-27.0.tar.xz
+          set -e
+          echo "==> 下载 magiskboot"
+          wget -O magiskboot https://github.com/kenway214/magiskboot_bin/raw/main/magiskboot
           chmod +x magiskboot
 
           echo "==> 准备内核镜像"
-          # 判断内核文件路径
           if [ -f "kernel/arch/arm64/boot/Image.gz-dtb" ]; then
             KERNEL_FILE="kernel/arch/arm64/boot/Image.gz-dtb"
           elif [ -f "kernel/arch/arm64/boot/Image.gz" ]; then
             KERNEL_FILE="kernel/arch/arm64/boot/Image.gz"
           else
-            echo "错误: 找不到内核镜像"
+            echo "错误：找不到内核文件"
             ls -l kernel/arch/arm64/boot/ || true
             exit 1
           fi
-          echo "使用内核文件: $KERNEL_FILE"
+          echo "使用内核: $KERNEL_FILE"
           ls -l "$KERNEL_FILE"
 
           echo "==> 检查原厂 boot.img"
           if [ ! -f "stock_boot.img" ]; then
-            echo "错误: stock_boot.img 不存在"
+            echo "错误：stock_boot.img 不存在"
             exit 1
           fi
           ls -l stock_boot.img
@@ -231,10 +223,6 @@ jobs:
           echo "==> 解包原厂 boot.img"
           cp stock_boot.img boot.img
           ./magiskboot unpack boot.img
-          if [ ! -f kernel ]; then
-            echo "错误: unpack 没有生成 kernel 文件"
-            exit 1
-          fi
 
           echo "==> 替换内核"
           cp "$KERNEL_FILE" kernel
@@ -242,9 +230,8 @@ jobs:
           echo "==> 重新打包"
           ./magiskboot repack boot.img new-boot.img
           ls -lh new-boot.img
-          echo "==> 打包成功"
+          echo "==> 打包成功！"
 
-      # ===== 5. 上传两个产物 =====
       - name: Upload AnyKernel3 zip
         uses: actions/upload-artifact@v4
         with:
