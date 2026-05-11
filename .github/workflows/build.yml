@@ -21,21 +21,10 @@ jobs:
           ref: lineage-20
           path: kernel
 
-      - name: 修复内核补丁 & 下载 KernelSU v0.9.5
+      - name: 修复内核补丁 &
         working-directory: kernel
         run: |
-          # ===== 1. 集成 KernelSU v0.9.5 =====
-          echo "==> 集成 KernelSU v0.9.5 ..."
-          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
-
-          # 启用 KernelSU 和 kprobe 配置（写入 defconfig）
-          DEFCONFIG_PATH="arch/arm64/configs/sdm845_defconfig"
-          if [ -f "$DEFCONFIG_PATH" ]; then
-            grep -q "CONFIG_KSU=y" $DEFCONFIG_PATH || echo "CONFIG_KSU=y" >> $DEFCONFIG_PATH
-            sed -i 's/^CONFIG_KPROBES=.*$/CONFIG_KPROBES=y/' $DEFCONFIG_PATH || echo "CONFIG_KPROBES=y" >> $DEFCONFIG_PATH
-            sed -i 's/^CONFIG_HAVE_KPROBES=.*$/CONFIG_HAVE_KPROBES=y/' $DEFCONFIG_PATH || echo "CONFIG_HAVE_KPROBES=y" >> $DEFCONFIG_PATH
-            sed -i 's/^CONFIG_KPROBE_EVENTS=.*$/CONFIG_KPROBE_EVENTS=y/' $DEFCONFIG_PATH || echo "CONFIG_KPROBE_EVENTS=y" >> $DEFCONFIG_PATH
-          fi
+          
 
           # ===== 2. 您原有的所有修复（已验证可编译） =====
           # 彻底移除无法编译的 elliptic 音频模块
