@@ -195,16 +195,18 @@ jobs:
       - name: Package new-boot.img with magiskboot
         run: |
          set -e
-         echo "==> 验证仓库中的 magiskboot 文件"
-         if [ ! -f "./magiskboot" ]; then
-         echo "错误：仓库根目录下找不到 magiskboot 文件"
-          echo "当前目录内容："
-          ls -la
-          exit 1
-         fi
-         echo "找到 magiskboot，大小："
-          ls -lh ./magiskboot
+         ls -la
+         # 检查仓库根目录下是否有 magiskboot
+         if [ -f "./magiskboot" ]; then
+          echo "==> 使用仓库中的 magiskboot"
+          chmod +x ./magiskboot
+          else
+          echo "==> 仓库中未找到 magiskboot，从 Magisk APK 提取"
+          wget -q https://github.com/topjohnwu/Magisk/releases/download/v27.0/Magisk-v27.0.apk
+         unzip -q Magisk-v27.0.apk -d magisk_extract
+         cp magisk_extract/lib/x86_64/libmagiskboot.so ./magiskboot
          chmod +x ./magiskboot
+         fi
 
           echo "==> 准备内核镜像"
           if [ -f "kernel/arch/arm64/boot/Image.gz-dtb" ]; then
