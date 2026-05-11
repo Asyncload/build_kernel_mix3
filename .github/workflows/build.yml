@@ -194,43 +194,44 @@ jobs:
 
       - name: Package new-boot.img with magiskboot
         run: |
-          set -e
-          echo "==> 下载 magiskboot"
-          wget -O magiskboot https://github.com/kenway214/magiskboot_bin/raw/main/magiskboot
-          chmod +x magiskboot
+         set -e
+         echo "==> 使用仓库中的 magiskboot"
+         chmod +x ./magiskboot
 
           echo "==> 准备内核镜像"
           if [ -f "kernel/arch/arm64/boot/Image.gz-dtb" ]; then
-            KERNEL_FILE="kernel/arch/arm64/boot/Image.gz-dtb"
+           KERNEL_FILE="kernel/arch/arm64/boot/Image.gz-dtb"
           elif [ -f "kernel/arch/arm64/boot/Image.gz" ]; then
-            KERNEL_FILE="kernel/arch/arm64/boot/Image.gz"
-          else
-            echo "错误：找不到内核文件"
+          KERNEL_FILE="kernel/arch/arm64/boot/Image.gz"
+           else
+           echo "错误：找不到内核文件"
             ls -l kernel/arch/arm64/boot/ || true
             exit 1
-          fi
-          echo "使用内核: $KERNEL_FILE"
-          ls -l "$KERNEL_FILE"
+            fi
+            echo "使用内核: $KERNEL_FILE"
+            ls -l "$KERNEL_FILE"
 
-          echo "==> 检查原厂 boot.img"
-          if [ ! -f "stock_boot.img" ]; then
-            echo "错误：stock_boot.img 不存在"
-            exit 1
-          fi
-          ls -l stock_boot.img
+            echo "==> 检查原厂 boot.img"
+            if [ ! -f "stock_boot.img" ]; then
+             echo "错误：stock_boot.img 不存在"
+             exit 1
+              fi
+              ls -l stock_boot.img
 
-          echo "==> 解包原厂 boot.img"
-          cp stock_boot.img boot.img
-          ./magiskboot unpack boot.img
+              echo "==> 解包原厂 boot.img"
+             cp stock_boot.img boot.img
+             ./magiskboot unpack boot.img
 
-          echo "==> 替换内核"
-          cp "$KERNEL_FILE" kernel
+               echo "==> 替换内核"
+               cp "$KERNEL_FILE" kernel
 
-          echo "==> 重新打包"
-          ./magiskboot repack boot.img new-boot.img
-          ls -lh new-boot.img
-          echo "==> 打包成功！"
+                echo "==> 重新打包"
+             ./magiskboot repack boot.img new-boot.img
+            ls -lh new-boot.img
+         echo "==> 打包成功！"
+          
 
+      
       - name: Upload AnyKernel3 zip
         uses: actions/upload-artifact@v4
         with:
