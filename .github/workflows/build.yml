@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v2
         with:
           repository: LineageOS/android_kernel_xiaomi_sdm845
-          ref: lineage-21
+          ref: lineage-20
           path: kernel
 
       - name: 修复内核补丁 & 下载 KernelSU v0.9.5
@@ -188,64 +188,9 @@ jobs:
           cd AnyKernel3
           zip -r9 Mix3-KernelSU-$(date +%Y%m%d-%H%M%S).zip . -x ".git*" "*~" "*.sh.*" "*.txt"
 
-      - name: Download stock boot.img from Release
-        run: |
-          wget -O stock_boot.img "https://github.com/Asyncload/build_kernel_mix3/releases/download/%E5%8E%9F%E5%8E%82/boot.img"
-
        # 查看有哪些目录
       - name: 查看文件目录有哪些
         run: ls -la
-      
-      
-      - name: Package new-boot.img with magiskboot
-        run: |
-         set -e
-      
-         # 检查仓库根目录下是否有 magiskboot
-         if [ -f "/kernel/magiskboot" ]; then
-          echo "==> 使用仓库中的 magiskboot"
-          chmod +x ./magiskboot
-          else
-          echo "==> 仓库中未找到 magiskboot，从 Magisk APK 提取"
-          wget -q https://github.com/topjohnwu/Magisk/releases/download/v27.0/Magisk-v27.0.apk
-         unzip -q Magisk-v27.0.apk -d magisk_extract
-         cp magisk_extract/lib/x86_64/libmagiskboot.so ./magiskboot
-         chmod +x ./magiskboot
-         fi
-
-          echo "==> 准备内核镜像"
-          if [ -f "kernel/arch/arm64/boot/Image.gz-dtb" ]; then
-           KERNEL_FILE="kernel/arch/arm64/boot/Image.gz-dtb"
-          elif [ -f "kernel/arch/arm64/boot/Image.gz" ]; then
-          KERNEL_FILE="kernel/arch/arm64/boot/Image.gz"
-           else
-           echo "错误：找不到内核文件"
-            ls -l kernel/arch/arm64/boot/ || true
-            exit 1
-            fi
-            echo "使用内核: $KERNEL_FILE"
-            ls -l "$KERNEL_FILE"
-
-            echo "==> 检查原厂 boot.img"
-            if [ ! -f "stock_boot.img" ]; then
-             echo "错误：stock_boot.img 不存在"
-             exit 1
-              fi
-              ls -l stock_boot.img
-
-              echo "==> 解包原厂 boot.img"
-             cp stock_boot.img boot.img
-             ./magiskboot unpack boot.img
-
-               echo "==> 替换内核"
-               cp "$KERNEL_FILE" kernel
-
-                echo "==> 重新打包"
-             ./magiskboot repack boot.img new-boot.img --force
-            ls -lh new-boot.img
-         echo "==> 打包成功！"
-          
-
       
       - name: Upload AnyKernel3 zip
         uses: actions/upload-artifact@v4
@@ -253,8 +198,4 @@ jobs:
           name: Mix3-KernelSU-AnyKernel3
           path: AnyKernel3/*.zip
 
-      - name: Upload new-boot.img
-        uses: actions/upload-artifact@v4
-        with:
-          name: Mix3-KernelSU-boot
-          path: new-boot.img
+      
