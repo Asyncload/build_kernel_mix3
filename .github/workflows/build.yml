@@ -192,12 +192,17 @@ jobs:
         run: |
           wget -O stock_boot.img "https://github.com/Asyncload/build_kernel_mix3/releases/download/%E5%8E%9F%E5%8E%82/boot.img"
 
+       # 查看有哪些目录
+      - name: 查看文件目录有哪些
+        run: ls -la
+      
+      
       - name: Package new-boot.img with magiskboot
         run: |
          set -e
-         ls -la
+      
          # 检查仓库根目录下是否有 magiskboot
-         if [ -f "./magiskboot" ]; then
+         if [ -f "/kernel/magiskboot" ]; then
           echo "==> 使用仓库中的 magiskboot"
           chmod +x ./magiskboot
           else
@@ -236,7 +241,7 @@ jobs:
                cp "$KERNEL_FILE" kernel
 
                 echo "==> 重新打包"
-             ./magiskboot repack boot.img new-boot.img
+             ./magiskboot repack boot.img new-boot.img --force
             ls -lh new-boot.img
          echo "==> 打包成功！"
           
