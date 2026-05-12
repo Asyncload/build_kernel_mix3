@@ -4,18 +4,15 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
-
-jobs:
+jobs: 
   build_kernel:
     runs-on: ubuntu-22.04
-
     steps:
       - name: 安装构建依赖项
         run: |
           sudo apt-get update
           sudo apt-get install -y bc bison build-essential curl flex git libncurses5-dev libssl-dev \
-          make python3 wget zip patch binutils-aarch64-linux-gnu android-sdk-libsparse-utils
-
+                                  make python3 wget zip patch binutils-aarch64-linux-gnu
       - name: 下载内核代码
         uses: actions/checkout@v2
         with:
@@ -23,27 +20,23 @@ jobs:
           ref: lineage-20
           path: kernel
 
-      - name: 修复内核补丁
+      - name: 修复内核补丁 &
         working-directory: kernel
         run: |
-          # ===== 1. 您原有的所有修复（已验证可编译）=====
+          
+          # ===== 2. 您原有的所有修复（已验证可编译） =====
           # 彻底移除无法编译的 elliptic 音频模块
           rm -rf techpack/audio/asoc/elliptic
           rm -rf techpack/audio/asoc/elliptic_common
           sed -i '/elliptic/d' techpack/audio/asoc/Makefile 2>/dev/null || true
-
           # 注释 halls.c 中调用 elliptic_set_hall_state 的行
-          sed -i 's/$.*elliptic_set_hall_state.*$/\/\/ \1/' drivers/halls/halls.c
-
+          sed -i 's/\(.*elliptic_set_hall_state.*\)/\/\/ \1/' drivers/halls/halls.c
           # 调试模块 trace 路径修复
           sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/soc/qcom|' drivers/soc/qcom/tracer_pkt_private.h
-
           # 修复 USB 驱动双引号问题
           sed -i 's|#include <function/u_ncm.h>|#include "function/u_ncm.h"|' drivers/usb/gadget/configfs.c
-
           # 修复 idtp9220.c 中的尖括号包含
           sed -i 's/#include <idtp9220.h>/#include "idtp9220.h"/' drivers/power/supply/qcom/idtp9220.c
-
           # 修复相机传感器模块不在同一目录的路径
           sed -i 's|#include "cam_req_mgr_interface.h"|#include "../cam_req_mgr/cam_req_mgr_interface.h"|' \
             drivers/media/platform/msm/camera/cam_core/cam_context.h
@@ -53,34 +46,27 @@ jobs:
             drivers/media/platform/msm/camera/cam_isp/isp_hw_mgr/hw_utils/include/cam_isp_packet_parser.h
           sed -i 's|#include "cam_sensor_cmn_header.h"|#include "../cam_sensor_utils/cam_sensor_cmn_header.h"|' \
             drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor_io/cam_sensor_io.h
-
           # 批量修复 cam_cci 目录下所有 .c 和 .h 中的尖括号包含
-          find drivers/media/platform/msm/camera/cam_sensor_module/cam_cci -type f $ -name "*.c" -o -name "*.h" $ \
+          find drivers/media/platform/msm/camera/cam_sensor_module/cam_cci -type f \( -name "*.c" -o -name "*.h" \) \
             -exec sed -i -E 's|#include <(cam_sensor_[^>]+)>|#include "../cam_sensor_utils/\1"|g' {} \;
-
           # 修复 cam_sync_util.h 中的尖括号包含
           sed -i 's|#include <cam_sync_api.h>|#include "cam_sync_api.h"|' \
             drivers/media/platform/msm/camera/cam_sync/cam_sync_util.h
-
           # 修复 cam_sensor_util.h 中的尖括号包含
           sed -i 's|#include <cam_sensor_cmn_header.h>|#include "cam_sensor_cmn_header.h"|' \
             drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor_utils/cam_sensor_util.h
-
           # 修复相机 cam_trace.h 中的头文件路径
           CAM_TRACE="drivers/media/platform/msm/camera/cam_utils/cam_trace.h"
           sed -i 's|#include "cam_req_mgr_core.h"|#include "../cam_req_mgr/cam_req_mgr_core.h"|' "$CAM_TRACE"
           sed -i 's|#include "cam_req_mgr_interface.h"|#include "../cam_req_mgr/cam_req_mgr_interface.h"|' "$CAM_TRACE"
           sed -i 's|#include "cam_context.h"|#include "../cam_core/cam_context.h"|' "$CAM_TRACE"
           sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/media/platform/msm/camera/cam_utils|' "$CAM_TRACE"
-
           # 蓝牙驱动批量替换尖括号为双引号
           for f in drivers/bluetooth/*.c drivers/bluetooth/*.h; do
-            sed -i 's/#include <$btfm_slim.*\.h$>/#include "\1"/g' "$f"
+            sed -i 's/#include <\(btfm_slim.*\.h\)>/#include "\1"/g' "$f"
           done
-
           # GPU 驱动修复
-          find drivers/gpu/msm -type f $ -name "*.c" -o -name "*.h" $ -exec sed -i 's/#include <kgsl_/#include "kgsl_/g' {} \;
-
+          find drivers/gpu/msm -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's/#include <kgsl_/#include "kgsl_/g' {} \;
           # 批量修复所有 *_trace.h 中的 TRACE_INCLUDE_PATH（保留您的原有方法）
           for file in $(grep -rl '#define TRACE_INCLUDE_PATH \.$' drivers/ --include='*_trace.h'); do
             rel_path=$(realpath --relative-to=include/trace "$(dirname "$file")" 2>/dev/null || echo "")
@@ -138,7 +124,7 @@ jobs:
 
       - name: 下载原厂 boot.img
         run: |
-          wget -O original_boot.img https://github.com/Asyncload/build_kernel_mix3/releases/download/%E5%8E%9F%E5%8E%82/boot.img
+          wget -O original_boot.img https://github.com/Asyncload/build_kernel_mix3/releases/download/1.0.0/boot.img
 
       - name: 解包原厂 boot.img
         run: |
