@@ -94,20 +94,18 @@ jobs:
            
       - name: 下载并配置 Clang 12.0.1
         run: |
-          # 1. 下载 Clang 12.0.1 预编译包
-          wget https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.1/clang+llvm-12.0.1-x86_64-linux-gnu-ubuntu-16.04.tar.xz
+          # 1. 下载文件，并使用 -O 参数直接将其重命名为简单的 clang-12.tar.xz
+          wget -O clang-12.tar.xz https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.1/clang+llvm-12.0.1-x86_64-linux-gnu-ubuntu-16.04.tar.xz
         
-           # 2. 解压文件
-           tar -xf clang+llvm-12.0.1-x86_64-linux-gnu-ubuntu-16.04.tar.xz
+          # 2. 解压这个新命名的压缩包
+          tar -xf clang-12.tar.xz
+          
+          # 3. 此时解压出来的文件夹依然是原名，我们再用 mv 把它改成简短的 clang-12
+          # 给原名加上双引号，确保万无一失
+          mv "clang+llvm-12.0.1-x86_64-linux-gnu-ubuntu-16.04" clang-12
         
-           # 3. 移动并重命名目录（确保文件名与解压后的文件夹完全一致）
-           mv "clang+llvm-12.0.1-x86_64-linux-gnu-ubuntu-16.04" clang-12
         
-        
-        
-           # 5. 验证安装是否成功
-           clang --version
-
+           
           
 
 
@@ -122,6 +120,8 @@ jobs:
           echo "ARCH=$ARCH" >> $GITHUB_ENV
           echo "CROSS_COMPILE=$CROSS_COMPILE" >> $GITHUB_ENV
           echo "LLVM=1" >> $GITHUB_ENV
+          # 5. 验证安装是否成功
+           clang --version
 
       - name: 配置 kernel
         working-directory: kernel
