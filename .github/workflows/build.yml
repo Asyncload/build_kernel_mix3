@@ -23,7 +23,8 @@ jobs:
           ref: lineage-21
           path: kernel
 
-      - name: 修复内核补丁 & working-directory: kernel
+      - name: 修复内核补丁
+        working-directory: kernel
         run: |
           # ===== 你的原有修复（已验证可编译） =====
           # 移除无法编译的 elliptic 音频模块
@@ -96,7 +97,8 @@ jobs:
           echo "CROSS_COMPILE=$CROSS_COMPILE" >> $GITHUB_ENV
           echo "LLVM=1" >> $GITHUB_ENV
 
-      - name:配置 kernel working-directory: kernel
+      - name: 配置 kernel 
+        working-directory: kernel
         run: |
           cp arch/arm64/configs/sdm845_defconfig .config
           cat arch/arm64/configs/vendor/xiaomi/perseus.config >> .config
@@ -114,7 +116,8 @@ jobs:
           make scripts
           make prepare
 
-      - name:构建 kernel working-directory: kernel
+      - name: 构建 kernel 
+        working-directory: kernel
         run: make -j$(nproc) KCFLAGS="-Wno-error"
 
       # >>>>>>>>>>>>>>>>>>>> 关键修改开始 >>>>>>>>>>>>>>>>>>>>
