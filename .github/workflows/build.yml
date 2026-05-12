@@ -91,13 +91,13 @@ jobs:
 
           # 修复 kgsl_events.c 中损坏的包含行
           sed -i 's|#include "kgsl_device\.h>|#include "kgsl_device.h"|' drivers/gpu/msm/kgsl_events.c
-
-      - name: 下载 Clang 13.0.0
+           
+      - name: 下载 Clang 12.0.1
         run: |
-          wget https://github.com/llvm/llvm-project/releases/download/llvmorg-13.0.0/clang+llvm-13.0.0-x86_64-linux-gnu-ubuntu-20.04.tar.xz
-          tar -xf clang+llvm-13.0.0-x86_64-linux-gnu-ubuntu-20.04.tar.xz
-          mv clang+llvm-13.0.0-x86_64-linux-gnu-ubuntu-20.04 clang-13
-
+          wget https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.1/clang+llvm-12.0.1-x86_64-linux-gnu-ubuntu-16.04.tar.xz
+          tar -xf clang+llvm-12.0.1-x86_64-linux-gnu-ubuntu-16.04.tar.xz
+          mv clang+llvm-12.0.1-x86_64-linux-gnu-ubuntu-16.04 clang-12
+          
       - name: 配置文件 for Clang
         run: |
           export PATH=$PWD/clang-13/bin:$PATH
