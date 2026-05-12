@@ -94,16 +94,11 @@ jobs:
            
       - name: 下载并配置 Clang 12.0.1
         run: |
-          # 1. 下载文件，并使用 -O 参数直接将其重命名为简单的 clang-12.tar.xz
-          wget -O clang-12.tar.xz https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.1/clang+llvm-12.0.1-x86_64-linux-gnu-ubuntu-16.04.tar.xz
+         # 1. 下载压缩包并重命名为简单名字
+         wget -O clang-12.tar.xz https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.1/clang+llvm-12.0.1-x86_64-linux-gnu-ubuntu-16.04.tar.xz
         
-          # 2. 解压这个新命名的压缩包
-          tar -xf clang-12.tar.xz
-          
-          # 3. 此时解压出来的文件夹依然是原名，我们再用 mv 把它改成简短的 clang-12
-          # 给原名加上双引号，确保万无一失
-          mv "clang+llvm-12.0.1-x86_64-linux-gnu-ubuntu-16.04" clang-12
-        
+         # 2. 解压并使用 --transform 参数，在解压的同时直接把文件夹重命名为 clang-12
+         tar -xf clang-12.tar.xz --transform 's/clang+llvm-12.0.1-x86_64-linux-gnu-ubuntu-16.04/clang-12/'
         
            
           
