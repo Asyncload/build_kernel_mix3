@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 jobs: 
   build_kernel:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-20.04
     steps:
       - name: 安装构建依赖项
         run: |
@@ -92,15 +92,29 @@ jobs:
           # 修复 kgsl_events.c 中损坏的包含行
           sed -i 's|#include "kgsl_device\.h>|#include "kgsl_device.h"|' drivers/gpu/msm/kgsl_events.c
            
-      - name: 下载 Clang 12.0.1
+      - name: 下载并配置 Clang 12.0.1
         run: |
+          # 1. 下载 Clang 12.0.1 预编译包
           wget https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.1/clang+llvm-12.0.1-x86_64-linux-gnu-ubuntu-16.04.tar.xz
-          tar -xf clang+llvm-12.0.1-x86_64-linux-gnu-ubuntu-16.04.tar.xz
-          mv clang+llvm-12.0.1-x86_64-linux-gnu-ubuntu-16.04 clang-12
+        
+           # 2. 解压文件
+           tar -xf clang+llvm-12.0.1-x86_64-linux-gnu-ubuntu-16.04.tar.xz
+        
+           # 3. 移动并重命名目录（确保文件名与解压后的文件夹完全一致）
+           mv clang+llvm-12.0.1-x86_64-linux-gnu-ubuntu-16.04 clang-12
+        
+        
+        
+           # 5. 验证安装是否成功
+           clang --version
+
+          
+
+
           
       - name: 配置文件 for Clang
         run: |
-          export PATH=$PWD/clang-13/bin:$PATH
+          export PATH=$PWD/clang-12/bin:$PATH
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           export LLVM=1
