@@ -4,35 +4,33 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
-
-jobs:
+jobs: 
   build_kernel:
     runs-on: ubuntu-22.04
-
     steps:
       - name: 安装构建依赖项
         run: |
           sudo apt-get update
           sudo apt-get install -y bc bison build-essential curl flex git libncurses5-dev libssl-dev \
-          make python3 wget zip patch binutils-aarch64-linux-gnu
-
+                                  make python3 wget zip patch binutils-aarch64-linux-gnu
       - name: 下载内核代码
         uses: actions/checkout@v2
         with:
           repository: LineageOS/android_kernel_xiaomi_sdm845
-          ref: lineage-21
+          ref: lineage-20
           path: kernel
 
-      - name: 修复内核补丁
+      - name: 修复内核补丁 &
         working-directory: kernel
         run: |
-          # ===== 你的原有修复（已验证可编译） =====
-          # 移除无法编译的 elliptic 音频模块
+          
+          # ===== 2. 您原有的所有修复（已验证可编译） =====
+          # 彻底移除无法编译的 elliptic 音频模块
           rm -rf techpack/audio/asoc/elliptic
           rm -rf techpack/audio/asoc/elliptic_common
           sed -i '/elliptic/d' techpack/audio/asoc/Makefile 2>/dev/null || true
           # 注释 halls.c 中调用 elliptic_set_hall_state 的行
-          sed -i 's/$.*elliptic_set_hall_state.*$/\/\/ \1/' drivers/halls/halls.c
+          sed -i 's/\(.*elliptic_set_hall_state.*\)/\/\/ \1/' drivers/halls/halls.c
           # 调试模块 trace 路径修复
           sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/soc/qcom|' drivers/soc/qcom/tracer_pkt_private.h
           # 修复 USB 驱动双引号问题
@@ -41,22 +39,22 @@ jobs:
           sed -i 's/#include <idtp9220.h>/#include "idtp9220.h"/' drivers/power/supply/qcom/idtp9220.c
           # 修复相机传感器模块不在同一目录的路径
           sed -i 's|#include "cam_req_mgr_interface.h"|#include "../cam_req_mgr/cam_req_mgr_interface.h"|' \
-          drivers/media/platform/msm/camera/cam_core/cam_context.h
+            drivers/media/platform/msm/camera/cam_core/cam_context.h
           sed -i 's|#include "cam_cci_dev.h"|#include "../cam_cci/cam_cci_dev.h"|' \
-          drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor_io/cam_sensor_i2c.h
+            drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor_io/cam_sensor_i2c.h
           sed -i 's|#include "cam_ife_hw_mgr.h"|#include "../../cam_ife_hw_mgr.h"|' \
-          drivers/media/platform/msm/camera/cam_isp/isp_hw_mgr/hw_utils/include/cam_isp_packet_parser.h
+            drivers/media/platform/msm/camera/cam_isp/isp_hw_mgr/hw_utils/include/cam_isp_packet_parser.h
           sed -i 's|#include "cam_sensor_cmn_header.h"|#include "../cam_sensor_utils/cam_sensor_cmn_header.h"|' \
-          drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor_io/cam_sensor_io.h
+            drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor_io/cam_sensor_io.h
           # 批量修复 cam_cci 目录下所有 .c 和 .h 中的尖括号包含
-          find drivers/media/platform/msm/camera/cam_sensor_module/cam_cci -type f $ -name "*.c" -o -name "*.h" $ \
-          -exec sed -i -E 's|#include <(cam_sensor_[^>]+)>|#include "../cam_sensor_utils/\1"|g' {} \;
+          find drivers/media/platform/msm/camera/cam_sensor_module/cam_cci -type f \( -name "*.c" -o -name "*.h" \) \
+            -exec sed -i -E 's|#include <(cam_sensor_[^>]+)>|#include "../cam_sensor_utils/\1"|g' {} \;
           # 修复 cam_sync_util.h 中的尖括号包含
           sed -i 's|#include <cam_sync_api.h>|#include "cam_sync_api.h"|' \
-          drivers/media/platform/msm/camera/cam_sync/cam_sync_util.h
+            drivers/media/platform/msm/camera/cam_sync/cam_sync_util.h
           # 修复 cam_sensor_util.h 中的尖括号包含
           sed -i 's|#include <cam_sensor_cmn_header.h>|#include "cam_sensor_cmn_header.h"|' \
-          drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor_utils/cam_sensor_util.h
+            drivers/media/platform/msm/camera/cam_sensor_module/cam_sensor_utils/cam_sensor_util.h
           # 修复相机 cam_trace.h 中的头文件路径
           CAM_TRACE="drivers/media/platform/msm/camera/cam_utils/cam_trace.h"
           sed -i 's|#include "cam_req_mgr_core.h"|#include "../cam_req_mgr/cam_req_mgr_core.h"|' "$CAM_TRACE"
@@ -65,27 +63,26 @@ jobs:
           sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../drivers/media/platform/msm/camera/cam_utils|' "$CAM_TRACE"
           # 蓝牙驱动批量替换尖括号为双引号
           for f in drivers/bluetooth/*.c drivers/bluetooth/*.h; do
-            sed -i -E 's/#include <$btfm_slim.*\.h$>/#include "\1"/g' "$f"
+            sed -i 's/#include <\(btfm_slim.*\.h\)>/#include "\1"/g' "$f"
           done
           # GPU 驱动修复
-          find drivers/gpu/msm -type f $ -name "*.c" -o -name "*.h" $ -exec sed -i -E 's/#include <kgsl_/#include "kgsl_/g' {} \;
-          # 批量修复所有 *_trace.h 中的 TRACE_INCLUDE_PATH
+          find drivers/gpu/msm -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's/#include <kgsl_/#include "kgsl_/g' {} \;
+          # 批量修复所有 *_trace.h 中的 TRACE_INCLUDE_PATH（保留您的原有方法）
           for file in $(grep -rl '#define TRACE_INCLUDE_PATH \.$' drivers/ --include='*_trace.h'); do
             rel_path=$(realpath --relative-to=include/trace "$(dirname "$file")" 2>/dev/null || echo "")
             if [ -n "$rel_path" ]; then
               sed -i "s|#define TRACE_INCLUDE_PATH \.$|#define TRACE_INCLUDE_PATH $rel_path|" "$file"
-              echo " Fixed: $file -> $rel_path"
+              echo "✅ Fixed: $file -> $rel_path"
             fi
           done
           # 修复 kgsl_events.c 中损坏的包含行
           sed -i 's|#include "kgsl_device\.h>|#include "kgsl_device.h"|' drivers/gpu/msm/kgsl_events.c
-
       - name: 下载 Clang 13.0.0
         run: |
           wget https://github.com/llvm/llvm-project/releases/download/llvmorg-13.0.0/clang+llvm-13.0.0-x86_64-linux-gnu-ubuntu-20.04.tar.xz
           tar -xf clang+llvm-13.0.0-x86_64-linux-gnu-ubuntu-20.04.tar.xz
           mv clang+llvm-13.0.0-x86_64-linux-gnu-ubuntu-20.04 clang-13
-
+          
       - name: 配置文件 for Clang
         run: |
           export PATH=$PWD/clang-13/bin:$PATH
@@ -96,55 +93,37 @@ jobs:
           echo "ARCH=$ARCH" >> $GITHUB_ENV
           echo "CROSS_COMPILE=$CROSS_COMPILE" >> $GITHUB_ENV
           echo "LLVM=1" >> $GITHUB_ENV
-
-      - name: 配置 kernel 
+      - name: 配置 kernel
         working-directory: kernel
         run: |
           cp arch/arm64/configs/sdm845_defconfig .config
           cat arch/arm64/configs/vendor/xiaomi/perseus.config >> .config
           scripts/config --disable CONFIG_EFI \
-            --disable CONFIG_EFI_STUB \
-            --disable CONFIG_EFI_DEV_PATH_PARSER \
-            --disable CONFIG_HALL \
-            --disable CONFIG_HALL_SENSOR \
-            --disable CONFIG_ELLIPTIC \
-            --disable CONFIG_ELLIPTIC_SUPPORT \
-            --disable CONFIG_MSM_ULTRASOUND \
-            --disable CONFIG_SND_SOC_MSM_ULTRA \
-            --disable CONFIG_AFE_LOOPBACK
+                         --disable CONFIG_EFI_STUB \
+                         --disable CONFIG_EFI_DEV_PATH_PARSER \
+                         --disable CONFIG_HALL \
+                         --disable CONFIG_HALL_SENSOR \
+                         --disable CONFIG_ELLIPTIC \
+                         --disable CONFIG_ELLIPTIC_SUPPORT \
+                         --disable CONFIG_MSM_ULTRASOUND \
+                         --disable CONFIG_SND_SOC_MSM_ULTRA \
+                         --disable CONFIG_AFE_LOOPBACK
           make ARCH=arm64 olddefconfig
           make scripts
           make prepare
-
-      - name: 构建 kernel 
+      - name: 构建 kernel
         working-directory: kernel
         run: make -j$(nproc) KCFLAGS="-Wno-error"
 
-      # >>>>>>>>>>>>>>>>>>>> 关键修改开始 >>>>>>>>>>>>>>>>>>>>
-      
-      # 1. 下载原厂 boot.img (使用你上传的 Release 链接)
-      - name: 下载原厂 boot.img
-        run: |
-          wget https://github.com/Asyncload/build_kernel_mix3/releases/download/%E5%8E%9F%E5%8E%82/boot.img -O boot.img
-          if [ ! -f "boot.img" ]; then
-            echo "错误：boot.img 下载失败！"
-            exit 1
-          fi
-          echo "成功下载原厂 boot.img"
-
-      # 2. 下载 AnyKernel3
       - name: 下载 AnyKernel3 repo
         run: |
           git clone https://github.com/osm0sis/AnyKernel3 -b master
           cd AnyKernel3
           rm -rf .git
-
-      # 3. 准备 AnyKernel3 (修复了 block 路径和 dtbo 设置)
       - name: 准备 AnyKernel3
         run: |
           cd AnyKernel3
           cat > anykernel.sh << 'EOF'
-          #!/bin/bash
           # AnyKernel3 Ramdisk Mod Script
           kernel.string=Mix3-KernelSU by Github Action
           do.devicecheck=1
@@ -157,48 +136,32 @@ jobs:
           device.name3=xiaomi
           supported.versions=9 - 14
           patch_vbmeta_flag=auto
-
-          # --- 核心修复 ---
-          # 1. 设置正确的 block 路径 (Mix3 是 A/B 分区)
-          block=/dev/block/bootdevice/by-name/boot;
-          
-          # 2. 关闭 dtbo (因为我们只有 boot.img，且内核包含 dtb)
-          is_dtbo_device=0;
-          
-          # 3. 引入核心库
+          block=boot;
+          is_slot_device=auto;
+          ramdisk_compression=auto;
           . tools/ak3-core.sh;
-          
-          # 4. 执行流程
           split_boot;
           flash_boot;
           EOF
-
-          # 清理旧文件
           rm -f Image* zImage* *dtb* kernel* ramdisk.patch 2>/dev/null || true
           rm -rf ramdisk patch 2>/dev/null || true
-
-      # 4. 复制内核映像 to AnyKernel3
       - name: 复制内核映像 to AnyKernel3
         run: |
-          # 确保复制的是 Image.gz-dtb
           if [ -f "kernel/arch/arm64/boot/Image.gz-dtb" ]; then
             cp kernel/arch/arm64/boot/Image.gz-dtb AnyKernel3/
           else
-            echo "错误：未找到编译产物 Image.gz-dtb！"
-            exit 1
+            cp kernel/arch/arm64/boot/Image.gz AnyKernel3/
           fi
-
-      # 5. Create flashable ZIP
       - name: Create flashable ZIP
         run: |
           cd AnyKernel3
-          zip -r9 Mix3-KernelSU-$(date +%Y%m%d-%H%M%S).zip .
-
-      # <<<<<<<<<<<<<<<<<<<< 关键修改结束 <<<<<<<<<<<<<<<<<<<<
-
+          zip -r9 Mix3-KernelSU-$(date +%Y%m%d-%H%M%S).zip . -x ".git*" "*~" "*.sh.*" "*.txt"
+       # 查看有哪些目录
+      - name: 查看文件目录有哪些
+        run: ls -la
+      
       - name: Upload AnyKernel3 zip
         uses: actions/upload-artifact@v4
         with:
           name: Mix3-KernelSU-AnyKernel3
           path: AnyKernel3/*.zip
-          
