@@ -193,76 +193,62 @@ jobs:
           cd AnyKernel3
           zip -r9 Mix3-KernelSU-$(date +%Y%m%d-%H%M%S).zip .
 
-      # 2. 准备 MagiskBoot 打包工具 (已修复架构不匹配问题)
-      - name: 准备 MagiskBoot 工具
+      # 2. 下载原厂boot.img
+      - name: Download Original Boot.img
         run: |
-          mkdir -p magisk
-          cd magisk
-          # 下载 Magisk 官方提供的 x86_64 命令行工具包
-          wget https://github.com/topjohnwu/Magisk/releases/download/v26.1/Magisk-v26.1.zip -O magisk.zip
-          if [ ! -f "magisk.zip" ]; then
-            echo "❌ 错误：Magisk 工具包下载失败！"
-            exit 1
-          fi
-          # 从压缩包中直接提取适用于 x86_64 环境的 magiskboot
-          unzip magisk.zip "x86_64/magiskboot"
-          mv x86_64/magiskboot magiskboot
-          chmod +x magiskboot
-          echo "✅ MagiskBoot (x86_64) 工具准备就绪"
-          echo "✅ 下载 Magisk 工具包成功"
-          
+          curl -L https://github.com/Asyncload/build_kernel_mix3/releases/download/1.0.0/boot.img -o original_boot.img
+          # 判断：检查文件是否下载成功
+          if [ ! -s original_boot.img ]; then echo "❌ 下载失败"; exit 1; fi
+          echo "✅ 原厂镜像下载成功"
 
-      # 3. 打包 new-boot.img
-      - name: 打包 new-boot.img
+      # 3. 安装解包/打包工具
+      - name: Install Boot.img Tools
         run: |
-          # 确保内核文件存在
-          if [ ! -f "kernel/arch/arm64/boot/Image.gz-dtb" ]; then
-            echo "❌ 错误：未找到编译产物 Image.gz-dtb！"
-            exit 1
-          fi
-          echo "✅ 找到编译产物 Image.gz-dtb！"
+          sudo apt-get update && sudo apt-get install -y abootimg
+          # 判断：检查工具是否可用
+          if ! command -v abootimg &> /dev/null; then echo "❌ 工具安装失败"; exit 1; fi
+          echo "✅ 工具安装成功"
 
-          # 创建打包工作目录
-          mkdir -p boot_packer
-          cd boot_packer
+      # 4. 解包原厂boot.img
+      - name: Unpack Original Boot.img
+        run: |
+          mkdir boot_unpack && cd boot_unpack
+          abootimg -x ../original_boot.img
+          # 判断：检查是否成功提取出关键文件
+          if [ ! -f bootimg.cfg ] || [ ! -f initrd.img ]; then echo "❌ 解包失败"; exit 1; fi
+          echo "✅ 原厂镜像解包成功"
+
+      # 5. 替换内核
+      - name: Replace Kernel
+        run: |
+          # 指定你的内核路径
+          KERNEL_PATH="kernel/arch/arm64/boot/Image.gz-dtb"
+          # 判断：检查该路径下的内核文件是否存在
+          if [ ! -f "$KERNEL_PATH" ]; then 
+            echo "❌ 错误：找不到内核文件 $KERNEL_PATH，请检查路径！"
+            exit 1 
+          fi
           
-          
-          # 复制原厂 boot.img 和新内核
-          cp ../boot.img ./boot.img
-          cp ../kernel/arch/arm64/boot/Image.gz-dtb ./kernel
+          # 替换操作
+          cp "$KERNEL_PATH" boot_unpack/zImage
+          echo "✅ 内核替换成功"
 
-          # 使用 magiskboot 解包原厂 boot.img (提取 ramdisk 等参数)
-          ../magisk/magiskboot unpack boot.img
-          if [ $? -ne 0 ]; then
-            echo "❌ 错误：magiskboot 解包 boot.img 失败！"
-            exit 1
-          fi
-          echo "✅ MagiskBoot 解包boot.img 成功!"
+      # 6. 生成 new-boot.img
+      - name: Repack Boot.img
+        run: |
+          cd boot_unpack
+          abootimg --create ../new-boot.img -f bootimg.cfg -k zImage -r initrd.img
+          # 判断：检查新镜像是否生成
+          if [ ! -s ../new-boot.img ]; then echo "❌ 重新打包失败"; exit 1; fi
+          echo "✅ new-boot.img 生成成功"
 
-          # 使用 magiskboot 重新打包 (用新内核替换旧内核)
-          # cpio 命令用于处理 ramdisk，repack 命令用于生成新镜像
-          ../magisk/magiskboot repack boot.img
-          if [ $? -ne 0 ]; then
-            echo "❌ 错误：magiskboot 打包 new-boot.img 失败！"
-            exit 1
-          fi
-          echo "✅ MagiskBoot 打包 new-boot.img成功！"
-
-          # 检查并移动生成的 new-boot.img
-          if [ -f "new-boot.img" ]; then
-            mv new-boot.img ../new-boot.img
-            echo "✅ 成功打包 new-boot.img"
-          else
-            echo "❌ 错误：未能生成 new-boot.img 文件！"
-            exit 1
-          fi
-
-      # 4. 上传 new-boot.img
-      - name: Upload new-boot.img
+      # 7. 上传 new-boot.img
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Mix3-new-boot-img
+          name: new-boot
           path: new-boot.img
+          
       # 上传内核打包文件
       - name: Upload AnyKernel3 zip
         uses: actions/upload-artifact@v4
