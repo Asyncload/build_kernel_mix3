@@ -193,23 +193,24 @@ jobs:
           cd AnyKernel3
           zip -r9 Mix3-KernelSU-$(date +%Y%m%d-%H%M%S).zip .
 
-      # 2. 准备 MagiskBoot 打包工具
+      # 2. 准备 MagiskBoot 打包工具 (已修复架构不匹配问题)
       - name: 准备 MagiskBoot 工具
         run: |
           mkdir -p magisk
           cd magisk
-          # 下载 Magisk 官方工具包 (提取其中的 magiskboot)
-          wget https://github.com/topjohnwu/Magisk/releases/download/v26.1/Magisk-v26.1.apk -O magisk.apk
-          if [ ! -f "magisk.apk" ]; then
+          # 下载 Magisk 官方提供的 x86_64 命令行工具包
+          wget https://github.com/topjohnwu/Magisk/releases/download/v26.1/Magisk-v26.1.zip -O magisk.zip
+          if [ ! -f "magisk.zip" ]; then
             echo "❌ 错误：Magisk 工具包下载失败！"
             exit 1
           fi
-          echo "✅ 下载 Magisk 工具包成功"
-          # 解压 apk 获取 lib 文件
-          unzip magisk.apk "lib/arm64-v8a/libmagiskboot.so"
-          mv lib/arm64-v8a/libmagiskboot.so magiskboot
+          # 从压缩包中直接提取适用于 x86_64 环境的 magiskboot
+          unzip magisk.zip "x86_64/magiskboot"
+          mv x86_64/magiskboot magiskboot
           chmod +x magiskboot
-          echo "✅ MagiskBoot 工具准备就绪"
+          echo "✅ MagiskBoot (x86_64) 工具准备就绪"
+          echo "✅ 下载 Magisk 工具包成功"
+          
 
       # 3. 打包 new-boot.img
       - name: 打包 new-boot.img
