@@ -182,16 +182,87 @@ jobs:
           if [ -f "kernel/arch/arm64/boot/Image.gz-dtb" ]; then
             cp kernel/arch/arm64/boot/Image.gz-dtb AnyKernel3/
           else
-            echo "错误：未找到编译产物 Image.gz-dtb！"
+            echo "❌错误：未找到编译产物 Image.gz-dtb！"
             exit 1
           fi
+          echo "✅找到到编译产物 Image.gz-dtb！"
 
       # 5. Create flashable ZIP
       - name: Create flashable ZIP
         run: |
           cd AnyKernel3
           zip -r9 Mix3-KernelSU-$(date +%Y%m%d-%H%M%S).zip .
-      # <<<<<<<<<<<<<<<<<<<< 关键修改结束 <<<<<<<<<<<<<<<<<<<<
+
+      # 2. 准备 MagiskBoot 打包工具
+      - name: 准备 MagiskBoot 工具
+        run: |
+          mkdir -p magisk
+          cd magisk
+          # 下载 Magisk 官方工具包 (提取其中的 magiskboot)
+          wget https://github.com/topjohnwu/Magisk/releases/download/v26.1/Magisk-v26.1.apk -O magisk.apk
+          if [ ! -f "magisk.apk" ]; then
+            echo "❌ 错误：Magisk 工具包下载失败！"
+            exit 1
+          fi
+          echo "✅ 下载 Magisk 工具包成功"
+          # 解压 apk 获取 lib 文件
+          unzip magisk.apk "lib/arm64-v8a/libmagiskboot.so"
+          mv lib/arm64-v8a/libmagiskboot.so magiskboot
+          chmod +x magiskboot
+          echo "✅ MagiskBoot 工具准备就绪"
+
+      # 3. 打包 new-boot.img
+      - name: 打包 new-boot.img
+        run: |
+          # 确保内核文件存在
+          if [ ! -f "kernel/arch/arm64/boot/Image.gz-dtb" ]; then
+            echo "❌ 错误：未找到编译产物 Image.gz-dtb！"
+            exit 1
+          fi
+          echo "✅ 找到编译产物 Image.gz-dtb！"
+
+          # 创建打包工作目录
+          mkdir -p boot_packer
+          cd boot_packer
+          
+          
+          # 复制原厂 boot.img 和新内核
+          cp ../boot.img ./boot.img
+          cp ../kernel/arch/arm64/boot/Image.gz-dtb ./kernel
+
+          # 使用 magiskboot 解包原厂 boot.img (提取 ramdisk 等参数)
+          ../magisk/magiskboot unpack boot.img
+          if [ $? -ne 0 ]; then
+            echo "❌ 错误：magiskboot 解包 boot.img 失败！"
+            exit 1
+          fi
+          echo "✅ MagiskBoot 解包boot.img 成功!"
+
+          # 使用 magiskboot 重新打包 (用新内核替换旧内核)
+          # cpio 命令用于处理 ramdisk，repack 命令用于生成新镜像
+          ../magisk/magiskboot repack boot.img
+          if [ $? -ne 0 ]; then
+            echo "❌ 错误：magiskboot 打包 new-boot.img 失败！"
+            exit 1
+          fi
+          echo "✅ MagiskBoot 打包 new-boot.img成功！"
+
+          # 检查并移动生成的 new-boot.img
+          if [ -f "new-boot.img" ]; then
+            mv new-boot.img ../new-boot.img
+            echo "✅ 成功打包 new-boot.img"
+          else
+            echo "❌ 错误：未能生成 new-boot.img 文件！"
+            exit 1
+          fi
+
+      # 4. 上传 new-boot.img
+      - name: Upload new-boot.img
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mix3-new-boot-img
+          path: new-boot.img
+      # 上传内核打包文件
       - name: Upload AnyKernel3 zip
         uses: actions/upload-artifact@v4
         with:
