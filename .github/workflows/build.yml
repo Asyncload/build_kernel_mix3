@@ -118,62 +118,82 @@ jobs:
         working-directory: kernel
         run: make -j$(nproc) KCFLAGS="-Wno-error"
         
-      # ✅ 新增步骤：下载原厂 boot.img 并打包新的 boot.iimg
-      - name: 创建工作目录
-        run: mkdir -p boot_output
-
+# >>>>>>>>>>>>>>>>>>>> 关键修改开始 >>>>>>>>>>>>>>>>>>>>
+      
+      # 1. 下载原厂 boot.img (使用你上传的 Release 链接)
       - name: 下载原厂 boot.img
         run: |
-          wget -O original_boot.img https://github.com/Asyncload/build_kernel_mix3/releases/download/1.0.0/boot.img
-
-      - name: 解包原厂 boot.img
-        run: |
-          # 检查文件是否存在
-          if [ ! -f "original_boot.img" ]; then
-            echo "错误：未找到 original_boot.img"
+          wget https://github.com/Asyncload/build_kernel_mix3/releases/download/1.0.0/boot.img -O boot.img
+          if [ ! -f "boot.img" ]; then
+            echo "❌错误：boot.img 下载失败！"
             exit 1
           fi
-          # 使用 unpackbootimg 解包
-          unpackbootimg -i original_boot.img -o boot_output/
+          echo "✅成功下载原厂 boot.img"
 
-      - name: 替换内核镜像
+      # 2. 下载 AnyKernel3
+      - name: 下载 AnyKernel3 repo
         run: |
-          # 查找编译出的内核文件
-          if [ -f "kernel/arch/arm64/boot/Image.gz-dtb" ]; then
-            cp kernel/arch/arm64/boot/Image.gz-dtb boot_output/kernel
-            echo "✅ 找到并替换 Image.gz-dtb"
-          elif [ -f "kernel/arch/arm64/boot/Image.gz" ]; then
-            cp kernel/arch/arm64/boot/Image.gz boot_output/kernel
-            echo "✅ 找到并替换 Image.gz"
-          else
-            echo "错误：未找到编译出的内核镜像 (Image.gz-dtb 或 Image.gz)"
-            exit 1
-          fi
+          git clone https://github.com/osm0sis/AnyKernel3 -b master
+          cd AnyKernel3
+          rm -rf .git
 
-      - name: 重新打包 boot.img
+      # 3. 准备 AnyKernel3 (修复了 block 路径和 dtbo 设置)
+      - name: 准备 AnyKernel3
         run: |
-          # 获取解包时生成的 cmdline 和 base 地址等参数
-          cd boot_output
+          cd AnyKernel3
+          cat > anykernel.sh << 'EOF'
+          #!/bin/bash
+          # AnyKernel3 Ramdisk Mod Script
+          kernel.string=Mix3-KernelSU by Github Action
+          do.devicecheck=1
+          do.modules=0
+          do.systemless=1
+          do.cleanup=1
+          do.cleanuponabort=0
+          device.name1=perseus
+          device.name2=mi_mix3
+          device.name3=xiaomi
+          supported.versions=9 - 14
+          patch_vbmeta_flag=auto
+
+          # --- 核心修复 ---
+          # 1. 设置正确的 block 路径 (Mix3 是 A/B 分区)
+          block=/dev/block/bootdevice/by-name/boot;
           
-          # 重新打包命令
-          mkbootimg \
-            --kernel kernel \
-            --ramdisk ramdisk \
-            --dtb dtb \
-            --cmdline "$(cat cmdline)" \
-            --base "$(cat base)" \
-            --kernel_offset "$(cat kernel_offset)" \
-            --ramdisk_offset "$(cat ramdisk_offset)" \
-            --dtb_offset "$(cat dtb_offset)" \
-            --tags_offset "$(cat tags_offset)" \
-            --pagesize "$(cat pagesize)" \
-            --os_version "$(cat os_version)" \
-            --os_patch_level "$(cat os_patch_level)" \
-            --header_version "$(cat header_version)" \
-            --output ../new_boot.img
+          # 2. 关闭 dtbo (因为我们只有 boot.img，且内核包含 dtb)
+          is_dtbo_device=0;
+          
+          # 3. 引入核心库
+          . tools/ak3-core.sh;
+          
+          # 4. 执行流程
+          split_boot;
+          flash_boot;
+          EOF
 
-      - name: 上传新的 boot.img
+          # 清理旧文件
+          rm -f Image* zImage* *dtb* kernel* ramdisk.patch 2>/dev/null || true
+          rm -rf ramdisk patch 2>/dev/null || true
+
+      # 4. 复制内核映像 to AnyKernel3
+      - name: 复制内核映像 to AnyKernel3
+        run: |
+          # 确保复制的是 Image.gz-dtb
+          if [ -f "kernel/arch/arm64/boot/Image.gz-dtb" ]; then
+            cp kernel/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+          else
+            echo "错误：未找到编译产物 Image.gz-dtb！"
+            exit 1
+          fi
+
+      # 5. Create flashable ZIP
+      - name: Create flashable ZIP
+        run: |
+          cd AnyKernel3
+          zip -r9 Mix3-KernelSU-$(date +%Y%m%d-%H%M%S).zip .
+      # <<<<<<<<<<<<<<<<<<<< 关键修改结束 <<<<<<<<<<<<<<<<<<<<
+      - name: Upload AnyKernel3 zip
         uses: actions/upload-artifact@v4
         with:
-          name: new-boot-img
-          path: new_boot.img
+          name: Mix3-KernelSU-AnyKernel3
+          path: AnyKernel3/*.zip
