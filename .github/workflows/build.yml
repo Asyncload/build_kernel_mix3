@@ -217,14 +217,7 @@ jobs:
           # 判断：检查是否成功提取出关键文件
           if [ ! -f bootimg.cfg ] || [ ! -f initrd.img ]; then echo "❌ 解包失败"; exit 1; fi
           echo "✅ 原厂镜像解包成功"
-      - name: 查找目标文件路径
-        run: |
-         echo "当前所在目录："
-         pwd
-         echo "列出所有文件："
-         ls -R
-         # 如果你想直接搜文件名，可以加这行：
-          find . -name "new-boot.img"
+      
 
       # 5. 替换内核
       - name: Replace Kernel
@@ -249,7 +242,15 @@ jobs:
           # 判断：检查新镜像是否生成
           if [ ! -s ../new-boot.img ]; then echo "❌ 重新打包失败"; exit 1; fi
           echo "✅ new-boot.img 生成成功"
-          ls -la
+      - name: 查找目标文件路径
+        run: |
+         echo "当前所在目录："
+         pwd
+         echo "列出所有文件："
+         ls -R
+         # 如果你想直接搜文件名，可以加这行：
+          find . -name "new-boot.img"
+          find . -name "Anykernel3/*.zip"
           
 
       # 7. 上传 new-boot.img
