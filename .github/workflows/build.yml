@@ -249,6 +249,7 @@ jobs:
           # 判断：检查新镜像是否生成
           if [ ! -s ../new-boot.img ]; then echo "❌ 重新打包失败"; exit 1; fi
           echo "✅ new-boot.img 生成成功"
+          ls -la
           
 
       # 7. 上传 new-boot.img
