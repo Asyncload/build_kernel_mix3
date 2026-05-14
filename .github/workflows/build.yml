@@ -243,15 +243,17 @@ jobs:
           echo "✅ new-boot.img 生成成功"
 
       # 7. 上传 new-boot.img
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+      - name: 上传镜像文件boot.img
+        uses: softprops/action-gh-release@v2
         with:
-          name: new-boot
-          path: new-boot.img
+          name: New-boot
+          tag_name: v_4.9.337
+          files: ../new-boot.img
           
       # 上传内核打包文件
       - name: Upload AnyKernel3 zip
-        uses: actions/upload-artifact@v4
+        uses: softprops/action-gh-release@v2
         with:
-          name: Mix3-KernelSU-AnyKernel3
-          path: AnyKernel3/*.zip
+          name: Mix3-AnyKernel3
+          tag_name: v_4.9.337
+          files: AnyKernel3/*.zip
